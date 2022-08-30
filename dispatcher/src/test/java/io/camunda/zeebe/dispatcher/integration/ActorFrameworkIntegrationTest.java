@@ -17,6 +17,7 @@ import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.ActorSchedulerRule;
 import io.camunda.zeebe.util.ByteValue;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.concurrent.CountDownLatch;
 import org.agrona.DirectBuffer;
 import org.junit.Rule;
@@ -67,6 +68,7 @@ public final class ActorFrameworkIntegrationTest {
     int counter = 1;
 
     ClaimingProducer(final Dispatcher dispatcher) {
+      super(OpenTelemetry.noop());
       this.dispatcher = dispatcher;
     }
 
@@ -96,6 +98,7 @@ public final class ActorFrameworkIntegrationTest {
     int counter = 0;
 
     Consumer(final Dispatcher dispatcher) {
+      super(OpenTelemetry.noop());
       this.dispatcher = dispatcher;
     }
 
@@ -146,6 +149,7 @@ public final class ActorFrameworkIntegrationTest {
         };
 
     PeekingConsumer(final Dispatcher dispatcher) {
+      super(OpenTelemetry.noop());
       this.dispatcher = dispatcher;
     }
 

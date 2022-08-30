@@ -17,11 +17,18 @@ import io.camunda.zeebe.broker.system.partitions.PartitionTransitionStep;
 import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Collection;
 
 public final class ExporterDirectorPartitionTransitionStep implements PartitionTransitionStep {
 
   private static final int EXPORTER_PROCESSOR_ID = 1003;
+
+  private final OpenTelemetry openTelemetry;
+
+  public ExporterDirectorPartitionTransitionStep(final OpenTelemetry openTelemetry) {
+    this.openTelemetry = openTelemetry;
+  }
 
   @Override
   public void onNewRaftRole(final PartitionTransitionContext context, final Role newRole) {
@@ -94,7 +101,8 @@ public final class ExporterDirectorPartitionTransitionStep implements PartitionT
             .descriptors(exporterDescriptors)
             .exporterMode(exporterMode);
 
-    final ExporterDirector director = new ExporterDirector(exporterCtx, !context.shouldExport());
+    final ExporterDirector director =
+        new ExporterDirector(exporterCtx, !context.shouldExport(), openTelemetry);
 
     context.getComponentHealthMonitor().registerComponent(director.getName(), director);
 

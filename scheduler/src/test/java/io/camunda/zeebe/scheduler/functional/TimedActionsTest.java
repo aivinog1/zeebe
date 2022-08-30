@@ -17,6 +17,7 @@ import io.camunda.zeebe.scheduler.ActorControl;
 import io.camunda.zeebe.scheduler.ScheduledTimer;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.function.Function;
 import org.junit.Rule;
@@ -31,7 +32,7 @@ public final class TimedActionsTest {
     // given
     final Runnable action = mock(Runnable.class);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             actor.runDelayed(Duration.ofMillis(10), action);
@@ -52,7 +53,7 @@ public final class TimedActionsTest {
     // given
     final Runnable action = mock(Runnable.class);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             actor.runDelayed(Duration.ofMillis(10), action);
@@ -75,7 +76,7 @@ public final class TimedActionsTest {
     // given
     final Runnable action = mock(Runnable.class);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             actor.runAtFixedRate(Duration.ofMillis(10), action);
@@ -171,6 +172,7 @@ public final class TimedActionsTest {
     private ScheduledTimer scheduledTimer;
 
     private TimerActor(final Function<ActorControl, ScheduledTimer> action) {
+      super(OpenTelemetry.noop());
       this.action = action;
     }
 

@@ -22,6 +22,7 @@ import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;
 import java.io.IOException;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,17 @@ abstract class AbstractMessageEncoder extends MessageToByteEncoder<Object> {
     try {
       final int length = ByteBufUtil.writeUtf8(buf, value);
       buffer.writeShort(length);
+      buffer.writeBytes(buf);
+    } finally {
+      buf.release();
+    }
+  }
+
+  static void writeUnboundString(final ByteBuf buffer, final String value) {
+    final ByteBuf buf = buffer.alloc().buffer(ByteBufUtil.utf8MaxBytes(value));
+    try {
+      final int length = ByteBufUtil.writeUtf8(buf, value);
+      buffer.writeInt(length);
       buffer.writeBytes(buf);
     } finally {
       buf.release();
@@ -138,6 +150,15 @@ abstract class AbstractMessageEncoder extends MessageToByteEncoder<Object> {
       buf.writeByte((byte) (value >>> 49 | 0x80));
       buf.writeByte((byte) (value >>> 56));
     }
+  }
+
+  static void writeStringStringMap(final ByteBuf buf, final Map<String, String> value) {
+    buf.writeShort(value.size());
+    value.forEach(
+        (key, entryValue) -> {
+          writeUnboundString(buf, key);
+          writeUnboundString(buf, entryValue);
+        });
   }
 
   @Override

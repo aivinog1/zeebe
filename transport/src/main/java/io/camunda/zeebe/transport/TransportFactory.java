@@ -11,18 +11,23 @@ import io.atomix.cluster.messaging.MessagingService;
 import io.camunda.zeebe.scheduler.ActorSchedulingService;
 import io.camunda.zeebe.transport.impl.AtomixClientTransportAdapter;
 import io.camunda.zeebe.transport.impl.AtomixServerTransport;
+import io.opentelemetry.api.OpenTelemetry;
 
 public final class TransportFactory {
 
   private final ActorSchedulingService actorSchedulingService;
+  private final OpenTelemetry openTelemetry;
 
-  public TransportFactory(final ActorSchedulingService actorSchedulingService) {
+  public TransportFactory(
+      final ActorSchedulingService actorSchedulingService, final OpenTelemetry openTelemetry) {
     this.actorSchedulingService = actorSchedulingService;
+    this.openTelemetry = openTelemetry;
   }
 
   public ServerTransport createServerTransport(
       final int nodeId, final MessagingService messagingService) {
-    final var atomixServerTransport = new AtomixServerTransport(nodeId, messagingService);
+    final var atomixServerTransport =
+        new AtomixServerTransport(nodeId, messagingService, openTelemetry);
     actorSchedulingService.submitActor(atomixServerTransport);
     return atomixServerTransport;
   }

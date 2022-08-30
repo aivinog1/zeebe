@@ -10,6 +10,7 @@ package io.camunda.zeebe.scheduler;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
+import io.opentelemetry.api.OpenTelemetry;
 import org.junit.jupiter.api.Test;
 
 final class ActorSchedulerTest {
@@ -43,5 +44,9 @@ final class ActorSchedulerTest {
         .isInstanceOf(IllegalStateException.class);
   }
 
-  private static final class TestActor extends Actor {}
+  private static final class TestActor extends Actor {
+    private TestActor() {
+      super(OpenTelemetry.noop());
+    }
+  }
 }

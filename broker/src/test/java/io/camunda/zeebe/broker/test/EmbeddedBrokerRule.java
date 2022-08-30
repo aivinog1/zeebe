@@ -35,6 +35,7 @@ import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.camunda.zeebe.util.FileUtil;
 import io.camunda.zeebe.util.allocation.DirectBufferAllocator;
 import io.netty.util.NetUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -230,7 +231,8 @@ public final class EmbeddedBrokerRule extends ExternalResource {
     final CountDownLatch latch = new CountDownLatch(brokerCfg.getCluster().getPartitionsCount());
     additionalListeners.add(new LeaderPartitionListener(latch));
 
-    broker = new Broker(systemContext, springBrokerBridge, additionalListeners);
+    broker =
+        new Broker(systemContext, springBrokerBridge, additionalListeners, OpenTelemetry.noop());
 
     broker.start().join();
 

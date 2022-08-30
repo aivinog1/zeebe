@@ -46,6 +46,10 @@ import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.epoll.EpollSocketChannel;
+import io.netty.channel.kqueue.KQueue;
+import io.netty.channel.kqueue.KQueueEventLoopGroup;
+import io.netty.channel.kqueue.KQueueServerSocketChannel;
+import io.netty.channel.kqueue.KQueueSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -59,11 +63,13 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.Future;
+import io.opentelemetry.api.OpenTelemetry;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -91,6 +97,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
   private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
   private static final String TLS_PROTOCOL = "TLSv1.3";
 
+  private final OpenTelemetry openTelemetry;
   private final Logger log = LoggerFactory.getLogger(getClass());
   private final Address advertisedAddress;
   private final Collection<Address> bindingAddresses = new ArrayList<>();
@@ -117,15 +124,19 @@ public final class NettyMessagingService implements ManagedMessagingService {
   private SslContext clientSslContext;
 
   public NettyMessagingService(
-      final String cluster, final Address advertisedAddress, final MessagingConfig config) {
-    this(cluster, advertisedAddress, config, ProtocolVersion.latest());
+      final String cluster,
+      final Address advertisedAddress,
+      final MessagingConfig config,
+      final OpenTelemetry openTelemetry) {
+    this(cluster, advertisedAddress, config, ProtocolVersion.latest(), openTelemetry);
   }
 
   NettyMessagingService(
       final String cluster,
       final Address advertisedAddress,
       final MessagingConfig config,
-      final ProtocolVersion protocolVersion) {
+      final ProtocolVersion protocolVersion,
+      final OpenTelemetry openTelemetry) {
     preamble = cluster.hashCode();
     this.advertisedAddress = advertisedAddress;
     this.protocolVersion = protocolVersion;
@@ -133,6 +144,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
 
     openFutures = new CopyOnWriteArrayList<>();
     channelPool = new ChannelPool(this::openChannel, config.getConnectionPoolSize());
+    this.openTelemetry = openTelemetry;
     initAddresses(config);
   }
 
@@ -164,7 +176,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
       final Address address, final String type, final byte[] payload, final boolean keepAlive) {
     final long messageId = messageIdGenerator.incrementAndGet();
     final ProtocolRequest message =
-        new ProtocolRequest(messageId, advertisedAddress, type, payload);
+        new ProtocolRequest(messageId, advertisedAddress, type, payload, new HashMap<>());
     return executeOnPooledConnection(
         address, type, c -> c.sendAsync(message), MoreExecutors.directExecutor());
   }
@@ -212,7 +224,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
 
     final long messageId = messageIdGenerator.incrementAndGet();
     final ProtocolRequest message =
-        new ProtocolRequest(messageId, advertisedAddress, type, payload);
+        new ProtocolRequest(messageId, advertisedAddress, type, payload, new HashMap<>());
     final CompletableFuture<byte[]> responseFuture;
     if (keepAlive) {
       responseFuture =
@@ -445,7 +457,9 @@ public final class NettyMessagingService implements ManagedMessagingService {
   }
 
   private void initTransport() {
-    if (Epoll.isAvailable()) {
+    if (KQueue.isAvailable()) {
+      initKQueueTransport();
+    } else if (Epoll.isAvailable()) {
       initEpollTransport();
     } else {
       initNioTransport();
@@ -468,6 +482,15 @@ public final class NettyMessagingService implements ManagedMessagingService {
         new NioEventLoopGroup(0, namedThreads("netty-messaging-event-nio-server-%d", log));
     serverChannelClass = NioServerSocketChannel.class;
     clientChannelClass = NioSocketChannel.class;
+  }
+
+  private void initKQueueTransport() {
+    clientGroup =
+        new KQueueEventLoopGroup(0, namedThreads("netty-messaging-event-kqueue-client-%d", log));
+    serverGroup =
+        new KQueueEventLoopGroup(0, namedThreads("netty-messaging-event-kqueue-server-%d", log));
+    serverChannelClass = KQueueServerSocketChannel.class;
+    clientChannelClass = KQueueSocketChannel.class;
   }
 
   /**
@@ -620,7 +643,9 @@ public final class NettyMessagingService implements ManagedMessagingService {
   private RemoteClientConnection getOrCreateClientConnection(final Channel channel) {
     RemoteClientConnection connection = connections.get(channel);
     if (connection == null) {
-      connection = connections.computeIfAbsent(channel, RemoteClientConnection::new);
+      connection =
+          connections.computeIfAbsent(
+              channel, foundChannel -> new RemoteClientConnection(foundChannel, openTelemetry));
       channel
           .closeFuture()
           .addListener(
@@ -985,7 +1010,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
                 writeProtocolVersion(context, protocolVersion);
                 activateProtocolVersion(
                     context,
-                    new RemoteServerConnection(handlers, context.channel()),
+                    new RemoteServerConnection(handlers, context.channel(), openTelemetry),
                     protocolVersion);
               });
     }

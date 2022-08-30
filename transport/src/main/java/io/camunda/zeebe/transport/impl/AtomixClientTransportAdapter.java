@@ -14,6 +14,7 @@ import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
 import io.camunda.zeebe.transport.ClientRequest;
 import io.camunda.zeebe.transport.ClientTransport;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.net.ConnectException;
 import java.time.Duration;
 import java.util.function.Predicate;
@@ -33,6 +34,7 @@ public final class AtomixClientTransportAdapter extends Actor implements ClientT
   private final MessagingService messagingService;
 
   public AtomixClientTransportAdapter(final MessagingService messagingService) {
+    super(GlobalOpenTelemetry.get());
     this.messagingService = messagingService;
   }
 

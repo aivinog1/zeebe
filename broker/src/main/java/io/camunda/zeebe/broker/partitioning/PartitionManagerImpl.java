@@ -30,6 +30,7 @@ import io.camunda.zeebe.scheduler.ConcurrencyControl;
 import io.camunda.zeebe.snapshots.impl.FileBasedSnapshotStoreFactory;
 import io.camunda.zeebe.transport.impl.AtomixServerTransport;
 import io.camunda.zeebe.util.health.HealthStatus;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -60,6 +61,7 @@ public final class PartitionManagerImpl implements PartitionManager, TopologyMan
   private final CommandApiService commandApiService;
   private final ExporterRepository exporterRepository;
   private final AtomixServerTransport gatewayBrokerTransport;
+  private final OpenTelemetry openTelemetry;
 
   public PartitionManagerImpl(
       final ActorSchedulingService actorSchedulingService,
@@ -71,7 +73,8 @@ public final class PartitionManagerImpl implements PartitionManager, TopologyMan
       final List<PartitionListener> partitionListeners,
       final CommandApiService commandApiService,
       final ExporterRepository exporterRepository,
-      final AtomixServerTransport gatewayBrokerTransport) {
+      final AtomixServerTransport gatewayBrokerTransport,
+      final OpenTelemetry openTelemetry) {
     this.gatewayBrokerTransport = gatewayBrokerTransport;
 
     snapshotStoreFactory =
@@ -98,6 +101,7 @@ public final class PartitionManagerImpl implements PartitionManager, TopologyMan
     this.partitionListeners = new ArrayList<>(partitionListeners);
     topologyManager = new TopologyManagerImpl(membershipService, localBroker);
     this.partitionListeners.add(topologyManager);
+    this.openTelemetry = openTelemetry;
   }
 
   @Override
@@ -144,7 +148,8 @@ public final class PartitionManagerImpl implements PartitionManager, TopologyMan
                       exporterRepository,
                       healthCheckService,
                       diskSpaceUsageMonitor,
-                      gatewayBrokerTransport);
+                      gatewayBrokerTransport,
+                      openTelemetry);
 
               partitions.addAll(
                   partitionFactory.constructPartitions(

@@ -16,6 +16,7 @@ import io.atomix.cluster.Member;
 import io.camunda.zeebe.gateway.Loggers;
 import io.camunda.zeebe.protocol.impl.encoding.BrokerInfo;
 import io.camunda.zeebe.scheduler.Actor;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,6 +33,7 @@ public final class BrokerTopologyManagerImpl extends Actor
   private final GatewayTopologyMetrics topologyMetrics = new GatewayTopologyMetrics();
 
   public BrokerTopologyManagerImpl(final Supplier<Set<Member>> membersSupplier) {
+    super(GlobalOpenTelemetry.get());
     this.membersSupplier = membersSupplier;
     topology = new AtomicReference<>(null);
   }

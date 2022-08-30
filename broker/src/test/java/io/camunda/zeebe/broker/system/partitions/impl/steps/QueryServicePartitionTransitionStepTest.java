@@ -14,6 +14,7 @@ import io.atomix.raft.RaftServer.Role;
 import io.camunda.zeebe.broker.system.partitions.TestPartitionTransitionContext;
 import io.camunda.zeebe.db.ZeebeDb;
 import io.camunda.zeebe.engine.state.QueryService;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -34,7 +35,7 @@ class QueryServicePartitionTransitionStepTest {
   void setup() {
 
     transitionContext.setZeebeDb(zeebeDb);
-    step = new QueryServicePartitionTransitionStep();
+    step = new QueryServicePartitionTransitionStep(OpenTelemetry.noop());
   }
 
   @ParameterizedTest

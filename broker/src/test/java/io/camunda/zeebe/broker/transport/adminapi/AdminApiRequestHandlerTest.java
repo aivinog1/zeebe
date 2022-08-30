@@ -30,6 +30,7 @@ import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerExtension;
 import io.camunda.zeebe.transport.ServerOutput;
 import io.camunda.zeebe.transport.impl.AtomixServerTransport;
 import io.camunda.zeebe.util.Either;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -182,7 +183,7 @@ final class AdminApiRequestHandlerTest {
       when(adminAccess.pauseExporting())
           .thenReturn(
               CompletableActorFuture.completedExceptionally(
-                  new RuntimeException("Exporting fails")));
+                  new RuntimeException("Exporting fails"), OpenTelemetry.noop()));
 
       final var request = new AdminRequest();
       request.setPartitionId(1);

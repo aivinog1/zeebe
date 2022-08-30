@@ -16,6 +16,7 @@ import io.camunda.zeebe.engine.state.QueryService;
 import io.camunda.zeebe.logstreams.log.LogStream;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.File;
 import java.time.Duration;
 import java.util.Collections;
@@ -50,7 +51,7 @@ public final class SimpleBrokerStartTest {
             () -> {
               final var systemContext =
                   new SystemContext(brokerCfg, newTemporaryFolder.getAbsolutePath(), null);
-              new Broker(systemContext, TEST_SPRING_BROKER_BRIDGE);
+              new Broker(systemContext, TEST_SPRING_BROKER_BRIDGE, OpenTelemetry.noop());
             });
 
     // then
@@ -71,7 +72,7 @@ public final class SimpleBrokerStartTest {
         new PartitionListener() {
           @Override
           public ActorFuture<Void> onBecomingFollower(final int partitionId, final long term) {
-            return CompletableActorFuture.completed(null);
+            return CompletableActorFuture.completed(null, OpenTelemetry.noop());
           }
 
           @Override
@@ -81,7 +82,7 @@ public final class SimpleBrokerStartTest {
               final LogStream logStream,
               final QueryService queryService) {
             leaderLatch.countDown();
-            return CompletableActorFuture.completed(null);
+            return CompletableActorFuture.completed(null, OpenTelemetry.noop());
           }
 
           @Override
@@ -90,7 +91,11 @@ public final class SimpleBrokerStartTest {
           }
         };
     final var broker =
-        new Broker(systemContext, TEST_SPRING_BROKER_BRIDGE, Collections.singletonList(listener));
+        new Broker(
+            systemContext,
+            TEST_SPRING_BROKER_BRIDGE,
+            Collections.singletonList(listener),
+            OpenTelemetry.noop());
 
     // when
     broker.start().join();

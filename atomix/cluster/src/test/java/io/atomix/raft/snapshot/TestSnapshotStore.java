@@ -21,6 +21,7 @@ import io.camunda.zeebe.snapshots.PersistedSnapshot;
 import io.camunda.zeebe.snapshots.PersistedSnapshotListener;
 import io.camunda.zeebe.snapshots.ReceivableSnapshotStore;
 import io.camunda.zeebe.snapshots.ReceivedSnapshot;
+import io.opentelemetry.api.OpenTelemetry;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -57,7 +58,7 @@ public class TestSnapshotStore implements ReceivableSnapshotStore {
   @Override
   public ActorFuture<Void> purgePendingSnapshots() {
     receivedSnapshots.clear();
-    return CompletableActorFuture.completed(null);
+    return CompletableActorFuture.completed(null, OpenTelemetry.noop());
   }
 
   @Override

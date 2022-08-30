@@ -11,12 +11,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.atomix.utils.net.Address;
 import io.camunda.zeebe.gateway.impl.configuration.GatewayCfg;
+import io.opentelemetry.api.OpenTelemetry;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 final class AtomixComponentTest {
   private final GatewayCfg config = new GatewayCfg();
-  private final AtomixComponent component = new AtomixComponent(config);
+  private final AtomixComponent component = new AtomixComponent(config, OpenTelemetry.noop());
 
   @Nested
   final class MessagingServiceTest {

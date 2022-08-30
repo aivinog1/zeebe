@@ -18,6 +18,7 @@ import io.camunda.zeebe.shared.ActorClockConfiguration;
 import io.camunda.zeebe.test.util.asserts.SslAssert;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.File;
 import java.net.InetSocketAddress;
 import org.agrona.CloseHelper;
@@ -129,7 +130,7 @@ final class StandaloneGatewaySecurityTest {
   }
 
   private StandaloneGateway buildGateway(final GatewayCfg gatewayCfg) {
-    final AtomixComponent clusterComponent = new AtomixComponent(gatewayCfg);
+    final AtomixComponent clusterComponent = new AtomixComponent(gatewayCfg, OpenTelemetry.noop());
     final ActorSchedulerComponent actorSchedulerComponent =
         new ActorSchedulerComponent(gatewayCfg, new ActorClockConfiguration(false));
     final var atomixCluster = clusterComponent.createAtomixCluster();

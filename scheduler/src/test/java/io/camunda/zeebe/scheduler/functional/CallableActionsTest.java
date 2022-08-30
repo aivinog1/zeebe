@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -82,7 +83,12 @@ public final class CallableActionsTest {
   }
 
   protected static class ExceptionActor extends Actor {
+
     protected final AtomicInteger invocations = new AtomicInteger(0);
+
+    protected ExceptionActor() {
+      super(OpenTelemetry.noop());
+    }
 
     public Future<Void> failWith(final Exception e) {
       return actor.call(
@@ -94,6 +100,11 @@ public final class CallableActionsTest {
   }
 
   class CloseableActor extends Actor {
+
+    CloseableActor() {
+      super(OpenTelemetry.noop());
+    }
+
     ActorFuture<Void> doCall() {
       return actor.call(() -> {});
     }

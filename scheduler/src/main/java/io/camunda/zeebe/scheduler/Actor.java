@@ -9,6 +9,8 @@ package io.camunda.zeebe.scheduler;
 
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.util.Loggers;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,8 +24,14 @@ public abstract class Actor implements AutoCloseable, AsyncClosable, Concurrency
   public static final String ACTOR_PROP_PARTITION_ID = "partitionId";
 
   private static final int MAX_CLOSE_TIMEOUT = 300;
-  protected final ActorControl actor = new ActorControl(this);
+  protected final ActorControl actor;
+  protected final OpenTelemetry openTelemetry;
   private Map<String, String> context;
+
+  protected Actor(final OpenTelemetry openTelemetry) {
+    this.openTelemetry = openTelemetry;
+    actor = new ActorControl(this, openTelemetry);
+  }
 
   /**
    * Should be overwritten by sub classes to add more context where the actor is run.
@@ -77,7 +85,7 @@ public abstract class Actor implements AutoCloseable, AsyncClosable, Concurrency
   }
 
   public static Actor wrap(final Consumer<ActorControl> r) {
-    return new Actor() {
+    return new Actor(GlobalOpenTelemetry.get()) {
       @Override
       public String getName() {
         return r.toString();

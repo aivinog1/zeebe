@@ -19,6 +19,7 @@ import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.ActorCondition;
 import io.camunda.zeebe.scheduler.FutureUtil;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.util.Arrays;
 import java.util.function.BiFunction;
 import org.slf4j.Logger;
@@ -56,6 +57,7 @@ public class Dispatcher extends Actor {
       final int maxFragmentLength,
       final String[] subscriptionNames,
       final String name) {
+    super(GlobalOpenTelemetry.get());
     this.logBuffer = logBuffer;
     this.logAppender = logAppender;
     this.publisherLimit = publisherLimit;

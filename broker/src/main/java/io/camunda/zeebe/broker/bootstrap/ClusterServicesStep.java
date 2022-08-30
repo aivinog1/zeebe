@@ -26,7 +26,9 @@ class ClusterServicesStep extends AbstractBrokerStartupStep {
       final ActorFuture<BrokerStartupContext> startupFuture) {
 
     final var atomix =
-        AtomixClusterFactory.fromConfiguration(brokerStartupContext.getBrokerConfiguration());
+        AtomixClusterFactory.fromConfiguration(
+            brokerStartupContext.getBrokerConfiguration(),
+            brokerStartupContext.getOpenTelemetryApi());
     final var clusterServices = new ClusterServicesImpl(atomix);
 
     brokerStartupContext.setClusterServices(clusterServices);

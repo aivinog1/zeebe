@@ -17,6 +17,7 @@ import io.camunda.zeebe.transport.ServerOutput;
 import io.camunda.zeebe.util.Either;
 import io.camunda.zeebe.util.buffer.BufferReader;
 import io.camunda.zeebe.util.buffer.BufferWriter;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.util.function.Supplier;
 import org.agrona.DirectBuffer;
 import org.agrona.sbe.MessageDecoderFlyweight;
@@ -41,6 +42,7 @@ public abstract class AsyncApiRequestHandler<R extends RequestReader<?>, W exten
 
   protected AsyncApiRequestHandler(
       final Supplier<R> requestReaderSupplier, final Supplier<W> responseWriterSupplier) {
+    super(GlobalOpenTelemetry.get());
     this.requestReaderSupplier = requestReaderSupplier;
     this.responseWriterSupplier = responseWriterSupplier;
   }

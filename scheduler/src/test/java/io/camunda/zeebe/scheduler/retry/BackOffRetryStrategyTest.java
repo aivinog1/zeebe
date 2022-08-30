@@ -14,6 +14,7 @@ import io.camunda.zeebe.scheduler.ActorControl;
 import io.camunda.zeebe.scheduler.clock.ActorClock;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -186,6 +187,11 @@ public final class BackOffRetryStrategyTest {
   }
 
   private final class ControllableActor extends Actor {
+
+    private ControllableActor() {
+      super(OpenTelemetry.noop());
+    }
+
     public ActorControl getActor() {
       return actor;
     }

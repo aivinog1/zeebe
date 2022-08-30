@@ -29,6 +29,7 @@ import io.camunda.zeebe.util.collection.Tuple;
 import io.camunda.zeebe.util.health.FailureListener;
 import io.camunda.zeebe.util.health.HealthMonitorable;
 import io.camunda.zeebe.util.health.HealthReport;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.prometheus.client.Histogram.Timer;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
@@ -63,6 +64,7 @@ final class LogStorageAppender extends Actor implements HealthMonitorable {
       final LogStorage logStorage,
       final Subscription writeBufferSubscription,
       final int maxBlockSize) {
+    super(GlobalOpenTelemetry.get());
     appenderMetrics = new AppenderMetrics(Integer.toString(partitionId));
     env = new Environment();
     this.name = name;

@@ -13,6 +13,8 @@ import io.camunda.zeebe.scheduler.ActorControl;
 import io.camunda.zeebe.scheduler.ActorTask;
 import io.camunda.zeebe.scheduler.ActorThread;
 import io.camunda.zeebe.scheduler.FutureUtil;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Queue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -51,21 +53,31 @@ public final class CompletableActorFuture<V> implements ActorFuture<V> {
   private final ReentrantLock completionLock = new ReentrantLock();
   private volatile int state = CLOSED;
   private Condition isDoneCondition;
+  private final OpenTelemetry openTelemetry;
 
   public CompletableActorFuture() {
     setAwaitingResult();
+    openTelemetry = GlobalOpenTelemetry.get();
   }
 
   private CompletableActorFuture(final V value) {
     this.value = value;
     state = COMPLETED;
+    openTelemetry = GlobalOpenTelemetry.get();
   }
 
-  private CompletableActorFuture(final Throwable throwable) {
+  private CompletableActorFuture(final V value, final OpenTelemetry openTelemetry) {
+    this.value = value;
+    state = COMPLETED;
+    this.openTelemetry = openTelemetry;
+  }
+
+  private CompletableActorFuture(final Throwable throwable, final OpenTelemetry openTelemetry) {
     ensureValidThrowable(throwable);
     failure = throwable.getMessage();
     failureCause = throwable;
     state = COMPLETED_EXCEPTIONALLY;
+    this.openTelemetry = openTelemetry;
   }
 
   private void ensureValidThrowable(final Throwable throwable) {
@@ -83,8 +95,14 @@ public final class CompletableActorFuture<V> implements ActorFuture<V> {
     return new CompletableActorFuture<>(result); // cast for null result
   }
 
-  public static <V> CompletableActorFuture<V> completedExceptionally(final Throwable throwable) {
-    return new CompletableActorFuture<>(throwable);
+  public static <V> CompletableActorFuture<V> completed(
+      final V result, final OpenTelemetry openTelemetry) {
+    return new CompletableActorFuture<>(result, openTelemetry); // cast for null result
+  }
+
+  public static <V> CompletableActorFuture<V> completedExceptionally(
+      final Throwable throwable, final OpenTelemetry openTelemetry) {
+    return new CompletableActorFuture<>(throwable, openTelemetry);
   }
 
   @Override
@@ -210,7 +228,7 @@ public final class CompletableActorFuture<V> implements ActorFuture<V> {
 
   @Override
   public void onComplete(final BiConsumer<V, Throwable> consumer) {
-    final ActorControl actorControl = ActorControl.current();
+    final ActorControl actorControl = ActorControl.current(openTelemetry);
     actorControl.runOnCompletion(this, consumer);
   }
 

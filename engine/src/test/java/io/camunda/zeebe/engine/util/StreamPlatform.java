@@ -36,6 +36,7 @@ import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.streamprocessor.StreamProcessor;
 import io.camunda.zeebe.streamprocessor.StreamProcessorMode;
 import io.camunda.zeebe.util.FileUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileAlreadyExistsException;
@@ -319,6 +320,11 @@ public final class StreamPlatform {
 
   /** Used to run writes within an actor thread. */
   private static final class WriteActor extends Actor {
+
+    private WriteActor() {
+      super(OpenTelemetry.noop());
+    }
+
     public ActorFuture<Long> submit(final Callable<Long> write) {
       return actor.call(write);
     }

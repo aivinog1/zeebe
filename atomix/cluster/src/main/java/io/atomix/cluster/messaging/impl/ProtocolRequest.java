@@ -19,6 +19,8 @@ package io.atomix.cluster.messaging.impl;
 import com.google.common.base.MoreObjects;
 import io.atomix.utils.misc.ArraySizeHashPrinter;
 import io.atomix.utils.net.Address;
+import java.util.Map;
+import java.util.Objects;
 
 /** Internal request message. */
 public final class ProtocolRequest extends ProtocolMessage {
@@ -26,8 +28,12 @@ public final class ProtocolRequest extends ProtocolMessage {
   private final String subject;
 
   public ProtocolRequest(
-      final long id, final Address sender, final String subject, final byte[] payload) {
-    super(id, payload);
+      final long id,
+      final Address sender,
+      final String subject,
+      final byte[] payload,
+      final Map<String, String> metadata) {
+    super(id, payload, metadata);
     this.sender = sender;
     this.subject = subject;
   }
@@ -35,6 +41,26 @@ public final class ProtocolRequest extends ProtocolMessage {
   @Override
   public Type type() {
     return Type.REQUEST;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(super.hashCode(), sender, subject);
+  }
+
+  @Override
+  public boolean equals(final Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    if (!super.equals(o)) {
+      return false;
+    }
+    final ProtocolRequest that = (ProtocolRequest) o;
+    return Objects.equals(sender, that.sender) && Objects.equals(subject, that.subject);
   }
 
   public String subject() {
@@ -52,6 +78,7 @@ public final class ProtocolRequest extends ProtocolMessage {
         .add("subject", subject)
         .add("sender", sender)
         .add("payload", ArraySizeHashPrinter.of(payload()))
+        .add("metadata", metadata())
         .toString();
   }
 }

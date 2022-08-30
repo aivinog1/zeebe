@@ -21,6 +21,7 @@ import io.camunda.zeebe.broker.system.monitoring.BrokerHealthCheckService;
 import io.camunda.zeebe.protocol.impl.encoding.BrokerInfo;
 import io.camunda.zeebe.scheduler.ActorSchedulingService;
 import io.camunda.zeebe.util.Environment;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import org.junit.Before;
 import org.junit.Rule;
@@ -64,7 +65,8 @@ public final class PartitionManagerImplTest {
             new ArrayList<>(),
             null,
             mock(ExporterRepository.class),
-            null);
+            null,
+            OpenTelemetry.noop());
 
     // then
     final var config = getPartitionGroupConfig(partitionManager);
@@ -89,7 +91,8 @@ public final class PartitionManagerImplTest {
             new ArrayList<>(),
             null,
             mock(ExporterRepository.class),
-            null);
+            null,
+            OpenTelemetry.noop());
     // then
     final var config = getPartitionGroupConfig(partitionManager);
     assertThat(config.getStorageConfig().shouldFlushExplicitly()).isTrue();

@@ -19,6 +19,7 @@ import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.testing.ActorSchedulerRule;
 import io.camunda.zeebe.util.ByteValue;
 import io.camunda.zeebe.util.health.HealthStatus;
+import io.opentelemetry.api.OpenTelemetry;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
@@ -116,6 +117,7 @@ public final class LogStorageAppenderHealthTest {
     private BiConsumer<Long, AppendListener> onAppend = (pos, listener) -> listener.onWrite(pos);
 
     public ControllableLogStorage() {
+      super(OpenTelemetry.noop());
       schedulerRule.submitActor(this).join();
     }
 

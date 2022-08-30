@@ -26,6 +26,7 @@ import io.atomix.utils.Builder;
 import io.atomix.utils.Version;
 import io.atomix.utils.net.Address;
 import io.camunda.zeebe.util.VersionUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.File;
 import java.util.Collection;
 import java.util.Properties;
@@ -58,9 +59,11 @@ import java.util.Properties;
 public class AtomixClusterBuilder implements Builder<AtomixCluster> {
 
   protected final ClusterConfig config;
+  private final OpenTelemetry openTelemetry;
 
-  public AtomixClusterBuilder(final ClusterConfig config) {
+  public AtomixClusterBuilder(final ClusterConfig config, final OpenTelemetry openTelemetry) {
     this.config = checkNotNull(config);
+    this.openTelemetry = openTelemetry;
   }
 
   /**
@@ -250,6 +253,6 @@ public class AtomixClusterBuilder implements Builder<AtomixCluster> {
 
   @Override
   public AtomixCluster build() {
-    return new AtomixCluster(config, Version.from(VersionUtil.getVersion()));
+    return new AtomixCluster(config, Version.from(VersionUtil.getVersion()), openTelemetry);
   }
 }

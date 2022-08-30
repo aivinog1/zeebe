@@ -28,6 +28,7 @@ import io.camunda.zeebe.snapshots.PersistedSnapshot;
 import io.camunda.zeebe.snapshots.impl.FileBasedSnapshotStoreFactory;
 import io.camunda.zeebe.streamprocessor.StreamProcessor;
 import io.camunda.zeebe.test.util.AutoCloseableRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Optional;
@@ -90,13 +91,13 @@ public final class AsyncSnapshottingTest {
     mockStreamProcessor = mock(StreamProcessor.class);
 
     when(mockStreamProcessor.getLastProcessedPositionAsync())
-        .thenReturn(CompletableActorFuture.completed(0L))
-        .thenReturn(CompletableActorFuture.completed(25L))
-        .thenReturn(CompletableActorFuture.completed(32L));
+        .thenReturn(CompletableActorFuture.completed(0L, OpenTelemetry.noop()))
+        .thenReturn(CompletableActorFuture.completed(25L, OpenTelemetry.noop()))
+        .thenReturn(CompletableActorFuture.completed(32L, OpenTelemetry.noop()));
 
     when(mockStreamProcessor.getLastWrittenPositionAsync())
-        .thenReturn(CompletableActorFuture.completed(99L))
-        .thenReturn(CompletableActorFuture.completed(100L));
+        .thenReturn(CompletableActorFuture.completed(99L, OpenTelemetry.noop()))
+        .thenReturn(CompletableActorFuture.completed(100L, OpenTelemetry.noop()));
   }
 
   private void createAsyncSnapshotDirectorOfProcessingMode() {
@@ -162,7 +163,8 @@ public final class AsyncSnapshottingTest {
         .thenReturn(CompletableActorFuture.completed(lastProcessedPosition));
     final var initialFailure = new RuntimeException("getLastWrittenPositionAsync fails");
     when(mockStreamProcessor.getLastWrittenPositionAsync())
-        .thenReturn(CompletableActorFuture.completedExceptionally(initialFailure));
+        .thenReturn(
+            CompletableActorFuture.completedExceptionally(initialFailure, OpenTelemetry.noop()));
     setCommitPosition(commitPosition);
     assertThatThrownBy(() -> asyncSnapshotDirector.forceSnapshot().join()).hasCause(initialFailure);
     verify(mockStreamProcessor, timeout(10000).times(1)).getLastWrittenPositionAsync();
@@ -187,7 +189,8 @@ public final class AsyncSnapshottingTest {
 
     final var initialFailure = new RuntimeException("getLastProcessedPositionAsync fails");
     when(mockStreamProcessor.getLastProcessedPositionAsync())
-        .thenReturn(CompletableActorFuture.completedExceptionally(initialFailure));
+        .thenReturn(
+            CompletableActorFuture.completedExceptionally(initialFailure, OpenTelemetry.noop()));
     when(mockStreamProcessor.getLastWrittenPositionAsync())
         .thenReturn(CompletableActorFuture.completed(lastWrittenPosition));
 

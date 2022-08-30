@@ -19,6 +19,7 @@ import io.atomix.utils.net.Address;
 import io.camunda.zeebe.broker.Loggers;
 import io.camunda.zeebe.broker.system.configuration.BrokerCfg;
 import io.camunda.zeebe.broker.system.configuration.ClusterCfg;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -29,7 +30,8 @@ public final class AtomixClusterFactory {
 
   private AtomixClusterFactory() {}
 
-  public static AtomixCluster fromConfiguration(final BrokerCfg configuration) {
+  public static AtomixCluster fromConfiguration(
+      final BrokerCfg configuration, final OpenTelemetry openTelemetry) {
     final var clusterCfg = configuration.getCluster();
     final var nodeId = clusterCfg.getNodeId();
     final var localMemberId = Integer.toString(nodeId);
@@ -53,7 +55,7 @@ public final class AtomixClusterFactory {
             .build();
 
     final var atomixBuilder =
-        new AtomixClusterBuilder(new ClusterConfig())
+        new AtomixClusterBuilder(new ClusterConfig(), openTelemetry)
             .withClusterId(clusterCfg.getClusterName())
             .withMemberId(localMemberId)
             .withMembershipProtocol(membershipProtocol)

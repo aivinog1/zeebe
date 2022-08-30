@@ -13,6 +13,7 @@ import io.camunda.zeebe.shared.ActorClockConfiguration;
 import io.camunda.zeebe.shared.Profile;
 import io.camunda.zeebe.util.FileUtil;
 import io.camunda.zeebe.util.error.FatalErrorHandler;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -49,6 +50,7 @@ public class StandaloneBroker
   private final Environment springEnvironment;
   private final SpringBrokerBridge springBrokerBridge;
   private final ActorClockConfiguration clockConfig;
+  private final OpenTelemetry openTelemetry;
 
   private String tempFolder;
   private SystemContext systemContext;
@@ -59,11 +61,13 @@ public class StandaloneBroker
       final BrokerCfg configuration,
       final Environment springEnvironment,
       final SpringBrokerBridge springBrokerBridge,
-      final ActorClockConfiguration clockConfig) {
+      final ActorClockConfiguration clockConfig,
+      final OpenTelemetry openTelemetry) {
     this.configuration = configuration;
     this.springEnvironment = springEnvironment;
     this.springBrokerBridge = springBrokerBridge;
     this.clockConfig = clockConfig;
+    this.openTelemetry = openTelemetry;
   }
 
   public static void main(final String[] args) {
@@ -91,7 +95,7 @@ public class StandaloneBroker
     }
 
     systemContext.getScheduler().start();
-    broker = new Broker(systemContext, springBrokerBridge);
+    broker = new Broker(systemContext, springBrokerBridge, openTelemetry);
     broker.start();
   }
 

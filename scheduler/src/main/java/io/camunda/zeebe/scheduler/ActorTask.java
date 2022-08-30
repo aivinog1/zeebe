@@ -361,6 +361,7 @@ public class ActorTask {
     boolean didWakeup = false;
 
     if (casState(TaskSchedulingState.WAITING, TaskSchedulingState.WAKING_UP)) {
+      // TODO: ContextPropagation
       resubmit();
       didWakeup = true;
     }

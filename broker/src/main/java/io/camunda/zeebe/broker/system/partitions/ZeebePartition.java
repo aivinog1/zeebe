@@ -29,6 +29,7 @@ import io.camunda.zeebe.util.health.FailureListener;
 import io.camunda.zeebe.util.health.HealthMonitorable;
 import io.camunda.zeebe.util.health.HealthReport;
 import io.camunda.zeebe.util.health.HealthStatus;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,7 @@ public final class ZeebePartition extends Actor
       final PartitionStartupAndTransitionContextImpl transitionContext,
       final PartitionTransition transition,
       final List<StartupStep<PartitionStartupContext>> startupSteps) {
+    super(GlobalOpenTelemetry.get());
     context = transitionContext.getPartitionContext();
     adminControl = transitionContext.getPartitionAdminControl();
 

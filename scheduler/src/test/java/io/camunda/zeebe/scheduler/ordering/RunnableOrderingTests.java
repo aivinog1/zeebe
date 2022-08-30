@@ -14,6 +14,7 @@ import io.camunda.zeebe.scheduler.ActorCondition;
 import io.camunda.zeebe.scheduler.channel.ConcurrentQueueChannel;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
 import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.junit.Rule;
@@ -143,7 +144,8 @@ public final class RunnableOrderingTests {
   @Test
   public void blockPhaseUntilCompletionFutureTest() {
     // given
-    final CompletableActorFuture<Void> future = CompletableActorFuture.completed(null);
+    final CompletableActorFuture<Void> future =
+        CompletableActorFuture.completed(null, OpenTelemetry.noop());
     final ActionRecordingActor actor =
         new ActionRecordingActor() {
           @Override

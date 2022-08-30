@@ -23,6 +23,7 @@ import io.camunda.zeebe.protocol.record.intent.Intent;
 import io.camunda.zeebe.scheduler.clock.ControlledActorClock;
 import io.camunda.zeebe.scheduler.testing.ActorSchedulerRule;
 import io.camunda.zeebe.test.util.AutoCloseableRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.List;
 import org.junit.rules.ExternalResource;
@@ -104,7 +105,7 @@ public final class ExporterRule implements TestRule {
             .partitionMessagingService(partitionMessagingService)
             .descriptors(exporterDescriptors);
 
-    director = new ExporterDirector(context, false);
+    director = new ExporterDirector(context, false, OpenTelemetry.noop());
     director.startAsync(actorSchedulerRule.get()).join();
   }
 

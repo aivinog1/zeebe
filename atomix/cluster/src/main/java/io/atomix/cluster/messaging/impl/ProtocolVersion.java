@@ -32,6 +32,12 @@ public enum ProtocolVersion {
     public MessagingProtocol createProtocol(final Address address) {
       return new MessagingProtocolV2(address);
     }
+  },
+  V3(3) {
+    @Override
+    public MessagingProtocol createProtocol(final Address address) {
+      return new MessagingProtocolV3(address);
+    }
   };
 
   private final short version;

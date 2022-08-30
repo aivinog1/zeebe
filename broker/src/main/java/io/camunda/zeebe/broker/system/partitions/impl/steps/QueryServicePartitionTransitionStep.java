@@ -14,9 +14,16 @@ import io.camunda.zeebe.engine.state.QueryService;
 import io.camunda.zeebe.engine.state.query.StateQueryService;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 import org.agrona.CloseHelper;
 
 public final class QueryServicePartitionTransitionStep implements PartitionTransitionStep {
+
+  private final OpenTelemetry openTelemetry;
+
+  public QueryServicePartitionTransitionStep(final OpenTelemetry openTelemetry) {
+    this.openTelemetry = openTelemetry;
+  }
 
   @Override
   public ActorFuture<Void> prepareTransition(
@@ -29,7 +36,7 @@ public final class QueryServicePartitionTransitionStep implements PartitionTrans
         context.setQueryService(null);
         return CompletableActorFuture.completed(null);
       } catch (final Exception e) {
-        return CompletableActorFuture.completedExceptionally(e);
+        return CompletableActorFuture.completedExceptionally(e, openTelemetry);
       }
     }
 
@@ -48,7 +55,7 @@ public final class QueryServicePartitionTransitionStep implements PartitionTrans
         context.setQueryService(service);
         return CompletableActorFuture.completed(null);
       } catch (final Exception e) {
-        return CompletableActorFuture.completedExceptionally(e);
+        return CompletableActorFuture.completedExceptionally(e, openTelemetry);
       }
     }
 

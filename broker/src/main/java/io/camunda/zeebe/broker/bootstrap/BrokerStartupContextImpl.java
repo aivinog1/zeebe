@@ -27,6 +27,7 @@ import io.camunda.zeebe.protocol.impl.encoding.BrokerInfo;
 import io.camunda.zeebe.scheduler.ActorSchedulingService;
 import io.camunda.zeebe.scheduler.ConcurrencyControl;
 import io.camunda.zeebe.transport.impl.AtomixServerTransport;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -39,6 +40,7 @@ public final class BrokerStartupContextImpl implements BrokerStartupContext {
   private final ActorSchedulingService actorScheduler;
   private final BrokerHealthCheckService healthCheckService;
   private final ExporterRepository exporterRepository;
+  private final OpenTelemetry openTelemetry;
 
   private final List<PartitionListener> partitionListeners = new ArrayList<>();
 
@@ -60,7 +62,8 @@ public final class BrokerStartupContextImpl implements BrokerStartupContext {
       final ActorSchedulingService actorScheduler,
       final BrokerHealthCheckService healthCheckService,
       final ExporterRepository exporterRepository,
-      final List<PartitionListener> additionalPartitionListeners) {
+      final List<PartitionListener> additionalPartitionListeners,
+      final OpenTelemetry openTelemetry) {
 
     this.brokerInfo = requireNonNull(brokerInfo);
     this.configuration = requireNonNull(configuration);
@@ -69,6 +72,7 @@ public final class BrokerStartupContextImpl implements BrokerStartupContext {
     this.healthCheckService = requireNonNull(healthCheckService);
     this.exporterRepository = requireNonNull(exporterRepository);
     partitionListeners.addAll(additionalPartitionListeners);
+    this.openTelemetry = openTelemetry;
   }
 
   @Override
@@ -213,5 +217,10 @@ public final class BrokerStartupContextImpl implements BrokerStartupContext {
   @Override
   public void setBrokerAdminService(final BrokerAdminServiceImpl brokerAdminService) {
     this.brokerAdminService = brokerAdminService;
+  }
+
+  @Override
+  public OpenTelemetry getOpenTelemetryApi() {
+    return openTelemetry;
   }
 }

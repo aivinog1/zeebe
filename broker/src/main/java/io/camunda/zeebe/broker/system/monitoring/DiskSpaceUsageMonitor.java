@@ -11,6 +11,7 @@ import static io.camunda.zeebe.broker.Broker.LOG;
 
 import io.camunda.zeebe.broker.system.configuration.DataCfg;
 import io.camunda.zeebe.scheduler.Actor;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -28,6 +29,7 @@ public class DiskSpaceUsageMonitor extends Actor {
   private final long minFreeDiskSpaceRequired;
 
   public DiskSpaceUsageMonitor(final DataCfg dataCfg) {
+    super(GlobalOpenTelemetry.get());
     monitoringDelay = dataCfg.getDiskUsageMonitoringInterval();
     minFreeDiskSpaceRequired = dataCfg.getFreeDiskSpaceCommandWatermark();
     final var directory = new File(dataCfg.getDirectory());

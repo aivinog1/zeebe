@@ -16,6 +16,7 @@ import io.atomix.utils.net.Address;
 import io.camunda.zeebe.gateway.impl.configuration.ClusterCfg;
 import io.camunda.zeebe.gateway.impl.configuration.GatewayCfg;
 import io.camunda.zeebe.gateway.impl.configuration.MembershipCfg;
+import io.opentelemetry.api.OpenTelemetry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ScopedProxyMode;
@@ -25,10 +26,12 @@ import org.springframework.web.context.annotation.ApplicationScope;
 @Component
 final class AtomixComponent {
   private final GatewayCfg config;
+  private final OpenTelemetry openTelemetry;
 
   @Autowired
-  AtomixComponent(final GatewayCfg config) {
+  AtomixComponent(final GatewayCfg config, final OpenTelemetry openTelemetry) {
     this.config = config;
+    this.openTelemetry = openTelemetry;
   }
 
   @Bean("atomixCluster")
@@ -38,7 +41,7 @@ final class AtomixComponent {
     final var membershipProtocol = createMembershipProtocol(clusterConfig.getMembership());
 
     final var builder =
-        AtomixCluster.builder()
+        AtomixCluster.builder(openTelemetry)
             .withMemberId(clusterConfig.getMemberId())
             .withMessagingInterface(clusterConfig.getHost())
             .withMessagingPort(clusterConfig.getPort())

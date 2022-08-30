@@ -19,6 +19,7 @@ import io.atomix.cluster.discovery.BootstrapDiscoveryProvider;
 import io.atomix.utils.net.Address;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.netty.util.NetUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -88,7 +89,7 @@ public final class AtomixClusterRule extends ExternalResource {
                 })
             .collect(Collectors.toList());
 
-    return new AtomixClusterBuilder(new ClusterConfig())
+    return new AtomixClusterBuilder(new ClusterConfig(), OpenTelemetry.noop())
         .withClusterId("test")
         .withMemberId(String.valueOf(id))
         .withHost("localhost")

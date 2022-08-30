@@ -16,6 +16,7 @@ import io.camunda.zeebe.protocol.record.ValueType;
 import io.camunda.zeebe.protocol.record.intent.Intent;
 import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.util.buffer.BufferWriter;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 
 public final class InterPartitionCommandSenderService extends Actor
     implements InterPartitionCommandSender, CheckpointListener, TopologyPartitionListener {
@@ -25,6 +26,7 @@ public final class InterPartitionCommandSenderService extends Actor
 
   public InterPartitionCommandSenderService(
       final ClusterCommunicationService communicationService, final int partitionId) {
+    super(GlobalOpenTelemetry.get());
     commandSender = new InterPartitionCommandSenderImpl(communicationService);
     this.partitionId = partitionId;
   }

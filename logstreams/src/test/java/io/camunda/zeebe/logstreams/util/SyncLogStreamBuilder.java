@@ -14,6 +14,7 @@ import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.ActorSchedulingService;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Objects;
 
 public final class SyncLogStreamBuilder implements LogStreamBuilder {
@@ -79,7 +80,7 @@ public final class SyncLogStreamBuilder implements LogStreamBuilder {
 
     final var buildFuture = new CompletableActorFuture<SyncLogStream>();
     scheduler.submitActor(
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarting() {
             actor.runOnCompletionBlockingCurrentPhase(

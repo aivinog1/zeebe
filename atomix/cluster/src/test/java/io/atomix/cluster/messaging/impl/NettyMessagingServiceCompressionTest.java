@@ -22,6 +22,7 @@ import io.atomix.cluster.messaging.MessagingConfig;
 import io.atomix.cluster.messaging.MessagingConfig.CompressionAlgorithm;
 import io.atomix.utils.net.Address;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -41,12 +42,16 @@ class NettyMessagingServiceCompressionTest {
 
     final var senderNetty =
         (ManagedMessagingService)
-            new NettyMessagingService("test", senderAddress, config).start().join();
+            new NettyMessagingService("test", senderAddress, config, OpenTelemetry.noop())
+                .start()
+                .join();
 
     final var receiverAddress = Address.from(SocketUtil.getNextAddress().getPort());
     final var receiverNetty =
         (ManagedMessagingService)
-            new NettyMessagingService("test", receiverAddress, config).start().join();
+            new NettyMessagingService("test", receiverAddress, config, OpenTelemetry.noop())
+                .start()
+                .join();
 
     final String subject = "subject";
     final String requestString = "message";

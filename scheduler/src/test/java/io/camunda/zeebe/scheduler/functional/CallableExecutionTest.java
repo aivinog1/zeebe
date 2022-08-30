@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.ActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
@@ -59,6 +60,10 @@ public final class CallableExecutionTest {
   }
 
   class CloseableActor extends Actor {
+    CloseableActor() {
+      super(OpenTelemetry.noop());
+    }
+
     ActorFuture<Void> doCall() {
       return actor.call(() -> {});
     }

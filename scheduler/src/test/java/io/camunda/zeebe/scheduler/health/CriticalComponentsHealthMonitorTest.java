@@ -17,6 +17,7 @@ import io.camunda.zeebe.util.health.HealthIssue;
 import io.camunda.zeebe.util.health.HealthMonitorable;
 import io.camunda.zeebe.util.health.HealthReport;
 import io.camunda.zeebe.util.health.HealthStatus;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.HashSet;
 import java.util.Set;
 import org.awaitility.Awaitility;
@@ -34,7 +35,7 @@ public class CriticalComponentsHealthMonitorTest {
   @Before
   public void setup() {
     final Actor testActor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           public String getName() {
             return "test-actor";

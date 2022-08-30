@@ -30,6 +30,7 @@ import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.TestConcurrencyControl;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
@@ -80,7 +81,8 @@ class PartitionManagerStepTest {
               actorScheduler,
               mock(BrokerHealthCheckService.class),
               mock(ExporterRepository.class),
-              Collections.emptyList());
+              Collections.emptyList(),
+              OpenTelemetry.noop());
       testBrokerStartupContext.setAdminApiService(mock(AdminApiRequestHandler.class));
       testBrokerStartupContext.setBrokerAdminService(mock(BrokerAdminServiceImpl.class));
       testBrokerStartupContext.setClusterServices(
@@ -151,7 +153,8 @@ class PartitionManagerStepTest {
               mock(ActorScheduler.class),
               mock(BrokerHealthCheckService.class),
               mock(ExporterRepository.class),
-              Collections.emptyList());
+              Collections.emptyList(),
+              OpenTelemetry.noop());
 
       testBrokerStartupContext.setPartitionManager(mockPartitionManager);
       shutdownFuture = CONCURRENCY_CONTROL.createFuture();

@@ -64,7 +64,7 @@ final class BrokerStepMetricDecorator implements StartupStep<BrokerStartupContex
 
       return future;
     } catch (final Exception e) {
-      return completedExceptionally(e);
+      return completedExceptionally(e, brokerStartupContext.getOpenTelemetryApi());
     }
   }
 }

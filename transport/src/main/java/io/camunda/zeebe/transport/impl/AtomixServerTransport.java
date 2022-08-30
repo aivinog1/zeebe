@@ -14,6 +14,7 @@ import io.camunda.zeebe.transport.RequestHandler;
 import io.camunda.zeebe.transport.RequestType;
 import io.camunda.zeebe.transport.ServerResponse;
 import io.camunda.zeebe.transport.ServerTransport;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,7 +36,11 @@ public class AtomixServerTransport extends Actor implements ServerTransport {
   private final MessagingService messagingService;
   private final String actorName;
 
-  public AtomixServerTransport(final int nodeId, final MessagingService messagingService) {
+  public AtomixServerTransport(
+      final int nodeId,
+      final MessagingService messagingService,
+      final OpenTelemetry openTelemetry) {
+    super(openTelemetry);
     this.messagingService = messagingService;
     partitionsRequestMap = new Int2ObjectHashMap<>();
     requestCount = new AtomicLong(0);
@@ -91,7 +96,7 @@ public class AtomixServerTransport extends Actor implements ServerTransport {
     }
   }
 
-  private void removeRequestHandlers(final int partitionId, RequestType requestType) {
+  private void removeRequestHandlers(final int partitionId, final RequestType requestType) {
     final var topicName = topicName(partitionId, requestType);
     LOG.trace("Unsubscribe from topic {}", topicName);
     messagingService.unregisterHandler(topicName);

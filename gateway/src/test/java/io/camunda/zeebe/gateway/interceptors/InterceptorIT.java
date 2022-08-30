@@ -24,6 +24,7 @@ import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.grpc.StatusRuntimeException;
 import io.netty.util.NetUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -57,7 +58,7 @@ final class InterceptorIT {
     config.init();
 
     cluster =
-        AtomixCluster.builder()
+        AtomixCluster.builder(OpenTelemetry.noop())
             .withAddress(Address.from(clusterAddress.getHostName(), clusterAddress.getPort()))
             .build();
     final var brokerClient =

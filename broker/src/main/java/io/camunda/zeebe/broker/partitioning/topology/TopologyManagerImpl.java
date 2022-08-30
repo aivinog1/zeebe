@@ -21,6 +21,7 @@ import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.util.LogUtil;
 import io.camunda.zeebe.util.health.HealthStatus;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -41,6 +42,7 @@ public final class TopologyManagerImpl extends Actor
 
   public TopologyManagerImpl(
       final ClusterMembershipService membershipService, final BrokerInfo localBroker) {
+    super(GlobalOpenTelemetry.get());
     this.membershipService = membershipService;
     this.localBroker = localBroker;
 

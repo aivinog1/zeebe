@@ -15,6 +15,7 @@ import io.camunda.zeebe.scheduler.ActorControl;
 import io.camunda.zeebe.scheduler.ActorTask.ActorLifecyclePhase;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -29,6 +30,10 @@ class LifecycleRecordingActor extends Actor {
           ActorLifecyclePhase.CLOSED);
 
   public final List<ActorLifecyclePhase> phases = new ArrayList<>();
+
+  LifecycleRecordingActor() {
+    super(OpenTelemetry.noop());
+  }
 
   @Override
   public void onActorStarting() {

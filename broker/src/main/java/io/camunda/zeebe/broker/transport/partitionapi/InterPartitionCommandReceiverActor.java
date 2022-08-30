@@ -16,6 +16,7 @@ import io.camunda.zeebe.broker.Loggers;
 import io.camunda.zeebe.broker.system.monitoring.DiskSpaceUsageListener;
 import io.camunda.zeebe.logstreams.log.LogStreamRecordWriter;
 import io.camunda.zeebe.scheduler.Actor;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.util.Map;
 import org.slf4j.Logger;
 
@@ -38,6 +39,7 @@ public final class InterPartitionCommandReceiverActor extends Actor
       final int partitionId,
       final ClusterCommunicationService communicationService,
       final LogStreamRecordWriter logStreamWriter) {
+    super(GlobalOpenTelemetry.get());
     this.partitionId = partitionId;
     this.communicationService = communicationService;
     receiver = new InterPartitionCommandReceiverImpl(logStreamWriter);

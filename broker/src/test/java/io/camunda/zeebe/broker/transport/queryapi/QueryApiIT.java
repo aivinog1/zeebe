@@ -31,6 +31,7 @@ import io.camunda.zeebe.transport.RequestType;
 import io.camunda.zeebe.transport.impl.AtomixClientTransportAdapter;
 import io.camunda.zeebe.util.buffer.BufferUtil;
 import io.netty.util.NetUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
@@ -61,7 +62,8 @@ public final class QueryApiIT {
         new NettyMessagingService(
             broker.getBrokerCfg().getCluster().getClusterName(),
             Address.from(SocketUtil.getNextAddress().getPort()),
-            new MessagingConfig());
+            new MessagingConfig(),
+            OpenTelemetry.noop());
 
     clientTransport = new AtomixClientTransportAdapter(messagingService);
     actor.submitActor((AtomixClientTransportAdapter) clientTransport).join();

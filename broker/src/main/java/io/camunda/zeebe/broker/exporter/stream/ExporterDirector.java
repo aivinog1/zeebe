@@ -35,6 +35,7 @@ import io.camunda.zeebe.util.exception.UnrecoverableException;
 import io.camunda.zeebe.util.health.FailureListener;
 import io.camunda.zeebe.util.health.HealthMonitorable;
 import io.camunda.zeebe.util.health.HealthReport;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -84,7 +85,11 @@ public final class ExporterDirector extends Actor implements HealthMonitorable, 
   private ExporterPositionsDistributionService exporterDistributionService;
   private final int partitionId;
 
-  public ExporterDirector(final ExporterDirectorContext context, final boolean shouldPauseOnStart) {
+  public ExporterDirector(
+      final ExporterDirectorContext context,
+      final boolean shouldPauseOnStart,
+      final OpenTelemetry openTelemetry) {
+    super(openTelemetry);
     name = context.getName();
     containers =
         context.getDescriptors().stream().map(ExporterContainer::new).collect(Collectors.toList());
@@ -132,7 +137,7 @@ public final class ExporterDirector extends Actor implements HealthMonitorable, 
 
   public ActorFuture<ExporterPhase> getPhase() {
     if (actor.isClosed()) {
-      return CompletableActorFuture.completed(ExporterPhase.CLOSED);
+      return CompletableActorFuture.completed(ExporterPhase.CLOSED, openTelemetry);
     }
     return actor.call(() -> exporterPhase);
   }

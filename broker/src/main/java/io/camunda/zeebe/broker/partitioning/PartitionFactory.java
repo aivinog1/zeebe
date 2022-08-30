@@ -58,27 +58,15 @@ import io.camunda.zeebe.snapshots.ConstructableSnapshotStore;
 import io.camunda.zeebe.snapshots.impl.FileBasedSnapshotStoreFactory;
 import io.camunda.zeebe.transport.impl.AtomixServerTransport;
 import io.camunda.zeebe.util.FeatureFlags;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 
 final class PartitionFactory {
 
-  private static final List<StartupStep<PartitionStartupContext>> STARTUP_STEPS =
-      List.of(
-          new LogDeletionPartitionStartupStep(), new RockDbMetricExporterPartitionStartupStep());
+  private final List<StartupStep<PartitionStartupContext>> startupSteps;
 
-  private static final List<PartitionTransitionStep> TRANSITION_STEPS =
-      List.of(
-          new LogStoragePartitionTransitionStep(),
-          new LogStreamPartitionTransitionStep(),
-          new InterPartitionCommandServiceStep(),
-          new ZeebeDbPartitionTransitionStep(),
-          new QueryServicePartitionTransitionStep(),
-          new BackupServiceTransitionStep(),
-          new StreamProcessorTransitionStep(),
-          new SnapshotDirectorPartitionTransitionStep(),
-          new ExporterDirectorPartitionTransitionStep(),
-          new BackupApiRequestHandlerStep());
+  private final List<PartitionTransitionStep> transitionSteps;
 
   private final ActorSchedulingService actorSchedulingService;
   private final BrokerCfg brokerCfg;
@@ -101,7 +89,8 @@ final class PartitionFactory {
       final ExporterRepository exporterRepository,
       final BrokerHealthCheckService healthCheckService,
       final DiskSpaceUsageMonitor diskSpaceUsageMonitor,
-      final AtomixServerTransport gatewayBrokerTransport) {
+      final AtomixServerTransport gatewayBrokerTransport,
+      final OpenTelemetry openTelemetry) {
     this.actorSchedulingService = actorSchedulingService;
     this.brokerCfg = brokerCfg;
     this.localBroker = localBroker;
@@ -112,6 +101,22 @@ final class PartitionFactory {
     this.healthCheckService = healthCheckService;
     this.diskSpaceUsageMonitor = diskSpaceUsageMonitor;
     this.gatewayBrokerTransport = gatewayBrokerTransport;
+    transitionSteps =
+        List.of(
+            new LogStoragePartitionTransitionStep(),
+            new LogStreamPartitionTransitionStep(),
+            new InterPartitionCommandServiceStep(),
+            new ZeebeDbPartitionTransitionStep(openTelemetry),
+            new QueryServicePartitionTransitionStep(openTelemetry),
+            new BackupServiceTransitionStep(openTelemetry),
+            new StreamProcessorTransitionStep(),
+            new SnapshotDirectorPartitionTransitionStep(),
+            new ExporterDirectorPartitionTransitionStep(openTelemetry),
+            new BackupApiRequestHandlerStep());
+    startupSteps =
+        List.of(
+            new LogDeletionPartitionStartupStep(openTelemetry),
+            new RockDbMetricExporterPartitionStartupStep());
   }
 
   List<ZeebePartition> constructPartitions(
@@ -166,11 +171,11 @@ final class PartitionFactory {
               topologyManager);
 
       final PartitionTransition newTransitionBehavior =
-          new PartitionTransitionImpl(TRANSITION_STEPS);
+          new PartitionTransitionImpl(transitionSteps);
 
       final ZeebePartition zeebePartition =
           new ZeebePartition(
-              partitionStartupAndTransitionContext, newTransitionBehavior, STARTUP_STEPS);
+              partitionStartupAndTransitionContext, newTransitionBehavior, startupSteps);
 
       healthCheckService.registerMonitoredPartition(
           zeebePartition.getPartitionId(), zeebePartition);

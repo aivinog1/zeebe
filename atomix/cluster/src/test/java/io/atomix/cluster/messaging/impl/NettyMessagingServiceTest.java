@@ -32,6 +32,7 @@ import io.atomix.cluster.messaging.MessagingConfig;
 import io.atomix.cluster.messaging.MessagingException;
 import io.atomix.utils.net.Address;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.net.ConnectException;
 import java.time.Duration;
 import java.util.Arrays;
@@ -83,38 +84,46 @@ public class NettyMessagingServiceTest {
 
     netty1 =
         (ManagedMessagingService)
-            new NettyMessagingService("test", address1, config).start().join();
+            new NettyMessagingService("test", address1, config, OpenTelemetry.noop())
+                .start()
+                .join();
 
     address2 = Address.from(SocketUtil.getNextAddress().getPort());
     netty2 =
         (ManagedMessagingService)
-            new NettyMessagingService("test", address2, config).start().join();
+            new NettyMessagingService("test", address2, config, OpenTelemetry.noop())
+                .start()
+                .join();
 
     addressv11 = Address.from(SocketUtil.getNextAddress().getPort());
     nettyv11 =
         (ManagedMessagingService)
-            new NettyMessagingService("test", addressv11, config, ProtocolVersion.V1)
+            new NettyMessagingService(
+                    "test", addressv11, config, ProtocolVersion.V1, OpenTelemetry.noop())
                 .start()
                 .join();
 
     addressv12 = Address.from(SocketUtil.getNextAddress().getPort());
     nettyv12 =
         (ManagedMessagingService)
-            new NettyMessagingService("test", addressv12, config, ProtocolVersion.V1)
+            new NettyMessagingService(
+                    "test", addressv12, config, ProtocolVersion.V1, OpenTelemetry.noop())
                 .start()
                 .join();
 
     addressv21 = Address.from(SocketUtil.getNextAddress().getPort());
     nettyv21 =
         (ManagedMessagingService)
-            new NettyMessagingService("test", addressv21, config, ProtocolVersion.V2)
+            new NettyMessagingService(
+                    "test", addressv21, config, ProtocolVersion.V2, OpenTelemetry.noop())
                 .start()
                 .join();
 
     addressv22 = Address.from(SocketUtil.getNextAddress().getPort());
     nettyv22 =
         (ManagedMessagingService)
-            new NettyMessagingService("test", addressv22, config, ProtocolVersion.V2)
+            new NettyMessagingService(
+                    "test", addressv22, config, ProtocolVersion.V2, OpenTelemetry.noop())
                 .start()
                 .join();
 
@@ -424,7 +433,8 @@ public class NettyMessagingServiceTest {
 
     // when
     final Address nonBindableAddress = new Address("invalid.host", 1);
-    final var startFuture = new NettyMessagingService("test", nonBindableAddress, config).start();
+    final var startFuture =
+        new NettyMessagingService("test", nonBindableAddress, config, OpenTelemetry.noop()).start();
 
     // then - should not fail by using advertisedAddress for binding
     messagingService = (ManagedMessagingService) startFuture.join();

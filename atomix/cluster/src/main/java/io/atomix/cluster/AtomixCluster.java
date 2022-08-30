@@ -42,6 +42,7 @@ import io.atomix.utils.concurrent.Futures;
 import io.atomix.utils.concurrent.SingleThreadContext;
 import io.atomix.utils.concurrent.ThreadContext;
 import io.atomix.utils.net.Address;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -103,17 +104,24 @@ public class AtomixCluster implements BootstrapService, Managed<Void> {
   protected final ThreadContext threadContext = new SingleThreadContext("atomix-cluster-%d");
   private final AtomicBoolean started = new AtomicBoolean();
 
-  public AtomixCluster(final ClusterConfig config, final Version version) {
-    this(config, version, buildMessagingService(config), buildUnicastService(config));
+  public AtomixCluster(
+      final ClusterConfig config, final Version version, final OpenTelemetry openTelemetry) {
+    this(
+        config,
+        version,
+        buildMessagingService(config, openTelemetry),
+        buildUnicastService(config),
+        openTelemetry);
   }
 
   protected AtomixCluster(
       final ClusterConfig config,
       final Version version,
       final ManagedMessagingService messagingService,
-      final ManagedUnicastService unicastService) {
+      final ManagedUnicastService unicastService,
+      final OpenTelemetry openTelemetry) {
     this.messagingService =
-        messagingService != null ? messagingService : buildMessagingService(config);
+        messagingService != null ? messagingService : buildMessagingService(config, openTelemetry);
     this.unicastService = unicastService != null ? unicastService : buildUnicastService(config);
 
     discoveryProvider = buildLocationProvider(config);
@@ -131,8 +139,8 @@ public class AtomixCluster implements BootstrapService, Managed<Void> {
    *
    * @return a new Atomix builder
    */
-  public static AtomixClusterBuilder builder() {
-    return builder(new ClusterConfig());
+  public static AtomixClusterBuilder builder(final OpenTelemetry openTelemetry) {
+    return builder(new ClusterConfig(), openTelemetry);
   }
 
   /**
@@ -141,8 +149,9 @@ public class AtomixCluster implements BootstrapService, Managed<Void> {
    * @param config the Atomix configuration
    * @return a new Atomix builder
    */
-  public static AtomixClusterBuilder builder(final ClusterConfig config) {
-    return new AtomixClusterBuilder(config);
+  public static AtomixClusterBuilder builder(
+      final ClusterConfig config, final OpenTelemetry openTelemetry) {
+    return new AtomixClusterBuilder(config, openTelemetry);
   }
 
   /**
@@ -288,9 +297,13 @@ public class AtomixCluster implements BootstrapService, Managed<Void> {
   }
 
   /** Builds a default messaging service. */
-  protected static ManagedMessagingService buildMessagingService(final ClusterConfig config) {
+  protected static ManagedMessagingService buildMessagingService(
+      final ClusterConfig config, final OpenTelemetry openTelemetry) {
     return new NettyMessagingService(
-        config.getClusterId(), config.getNodeConfig().getAddress(), config.getMessagingConfig());
+        config.getClusterId(),
+        config.getNodeConfig().getAddress(),
+        config.getMessagingConfig(),
+        openTelemetry);
   }
 
   /** Builds a default unicast service. */

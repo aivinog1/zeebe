@@ -32,6 +32,7 @@ import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
 import io.camunda.zeebe.snapshots.TransientSnapshot;
 import io.camunda.zeebe.streamprocessor.StreamProcessor;
 import io.camunda.zeebe.util.health.HealthMonitor;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -148,7 +149,7 @@ public class RandomizedPartitionTransitionTest {
         };
 
     final var firstStep = new PausableStep(operations);
-    final var zeebeDbStep = new ZeebeDbPartitionTransitionStep();
+    final var zeebeDbStep = new ZeebeDbPartitionTransitionStep(OpenTelemetry.noop());
 
     final var context = new TestPartitionTransitionContext();
     context.setStateController(new TestStateController(instanceTracker));
@@ -421,6 +422,10 @@ public class RandomizedPartitionTransitionTest {
   }
 
   private static class TestActor extends Actor {
+
+    TestActor() {
+      super(OpenTelemetry.noop());
+    }
 
     @Override
     public String getName() {

@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.testing.ActorSchedulerRule;
 import io.camunda.zeebe.util.FileUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -126,6 +127,11 @@ public final class FileBasedSnapshotTest {
   }
 
   static class TestActor extends Actor {
+
+    TestActor() {
+      super(OpenTelemetry.noop());
+    }
+
     io.camunda.zeebe.scheduler.ActorControl getActorControl() {
       return actor;
     }

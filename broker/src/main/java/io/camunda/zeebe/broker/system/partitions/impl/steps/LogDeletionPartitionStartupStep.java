@@ -15,8 +15,15 @@ import io.camunda.zeebe.broker.system.partitions.PartitionStartupStep;
 import io.camunda.zeebe.scheduler.SchedulingHints;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 
 public class LogDeletionPartitionStartupStep implements PartitionStartupStep {
+
+  private final OpenTelemetry openTelemetry;
+
+  public LogDeletionPartitionStartupStep(final OpenTelemetry openTelemetry) {
+    this.openTelemetry = openTelemetry;
+  }
 
   @Override
   public String getName() {
@@ -33,7 +40,8 @@ public class LogDeletionPartitionStartupStep implements PartitionStartupStep {
             partitionStartupContext.getNodeId(),
             partitionStartupContext.getPartitionId(),
             logCompactor,
-            partitionStartupContext.getPersistedSnapshotStore());
+            partitionStartupContext.getPersistedSnapshotStore(),
+            openTelemetry);
 
     partitionStartupContext.setLogDeletionService(deletionService);
     final ActorFuture<PartitionStartupContext> startupFuture = new CompletableActorFuture<>();

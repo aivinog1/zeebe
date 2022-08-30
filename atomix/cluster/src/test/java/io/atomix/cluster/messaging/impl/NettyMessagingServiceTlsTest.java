@@ -21,6 +21,7 @@ import io.atomix.cluster.messaging.MessagingConfig;
 import io.atomix.utils.net.Address;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+import io.opentelemetry.api.OpenTelemetry;
 import java.net.ConnectException;
 import java.security.cert.CertificateException;
 import java.time.Duration;
@@ -106,7 +107,8 @@ final class NettyMessagingServiceTlsTest {
   private NettyMessagingService createInsecureMessagingService() {
     final var config =
         new MessagingConfig().setPort(SocketUtil.getNextAddress().getPort()).setTlsEnabled(false);
-    return new NettyMessagingService("cluster", Address.from(config.getPort()), config);
+    return new NettyMessagingService(
+        "cluster", Address.from(config.getPort()), config, OpenTelemetry.noop());
   }
 
   private NettyMessagingService createSecureMessagingService(
@@ -117,6 +119,7 @@ final class NettyMessagingServiceTlsTest {
             .setTlsEnabled(true)
             .setCertificateChain(certificate.certificate())
             .setPrivateKey(certificate.privateKey());
-    return new NettyMessagingService("cluster", Address.from(config.getPort()), config);
+    return new NettyMessagingService(
+        "cluster", Address.from(config.getPort()), config, OpenTelemetry.noop());
   }
 }

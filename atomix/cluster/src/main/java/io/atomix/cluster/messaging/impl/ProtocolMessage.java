@@ -16,15 +16,22 @@
  */
 package io.atomix.cluster.messaging.impl;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
+
 /** Base class for internal messages. */
 public abstract class ProtocolMessage {
 
   private final long id;
   private final byte[] payload;
+  private final Map<String, String> metadata;
 
-  protected ProtocolMessage(final long id, final byte[] payload) {
+  protected ProtocolMessage(
+      final long id, final byte[] payload, final Map<String, String> metadata) {
     this.id = id;
     this.payload = payload;
+    this.metadata = metadata;
   }
 
   public abstract Type type();
@@ -43,6 +50,31 @@ public abstract class ProtocolMessage {
 
   public byte[] payload() {
     return payload;
+  }
+
+  public Map<String, String> metadata() {
+    return metadata;
+  }
+
+  @Override
+  public int hashCode() {
+    int result = Objects.hash(id, metadata);
+    result = 31 * result + Arrays.hashCode(payload);
+    return result;
+  }
+
+  @Override
+  public boolean equals(final Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    final ProtocolMessage that = (ProtocolMessage) o;
+    return id == that.id
+        && Arrays.equals(payload, that.payload)
+        && Objects.equals(metadata, that.metadata);
   }
 
   /** Internal message type. */

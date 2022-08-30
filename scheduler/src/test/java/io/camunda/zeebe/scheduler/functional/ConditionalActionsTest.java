@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.scheduler.ActorCondition;
 import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Rule;
@@ -30,7 +31,7 @@ public final class ConditionalActionsTest {
     final Runnable action = mock(Runnable.class);
     final AtomicReference<ActorCondition> condition = new AtomicReference<ActorCondition>(null);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             condition.set(actor.onCondition("test", action));
@@ -51,7 +52,7 @@ public final class ConditionalActionsTest {
     final Runnable action = mock(Runnable.class);
     final AtomicReference<ActorCondition> condition = new AtomicReference<ActorCondition>(null);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             condition.set(actor.onCondition("test", action));
@@ -74,7 +75,7 @@ public final class ConditionalActionsTest {
     final Runnable action = mock(Runnable.class);
     final AtomicReference<ActorCondition> condition = new AtomicReference<ActorCondition>(null);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             condition.set(actor.onCondition("test", action));
@@ -109,7 +110,7 @@ public final class ConditionalActionsTest {
     final Runnable action = mock(Runnable.class);
     final AtomicReference<ActorCondition> condition = new AtomicReference<ActorCondition>(null);
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             condition.set(actor.onCondition("test", action));
@@ -137,7 +138,7 @@ public final class ConditionalActionsTest {
     final AtomicReference<ActorCondition> condition = new AtomicReference<>();
 
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarted() {
             condition.set(actor.onCondition("foo", this::onCondition));

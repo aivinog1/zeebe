@@ -58,7 +58,7 @@ abstract class AbstractBrokerStartupStep implements StartupStep<BrokerStartupCon
       forwardExceptions(() -> runnable.accept(concurrencyControl, future), future);
       return future;
     } catch (final Exception e) {
-      return completedExceptionally(e);
+      return completedExceptionally(e, brokerStartupContext.getOpenTelemetryApi());
     }
   }
 

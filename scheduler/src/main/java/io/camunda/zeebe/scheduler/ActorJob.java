@@ -10,9 +10,17 @@ package io.camunda.zeebe.scheduler;
 import io.camunda.zeebe.scheduler.ActorTask.TaskSchedulingState;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
+import io.camunda.zeebe.scheduler.opentelemetry.actor.ActorJobTextMapGetter;
 import io.camunda.zeebe.util.Loggers;
 import io.camunda.zeebe.util.error.FatalErrorHandler;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.TextMapGetter;
+import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -24,6 +32,10 @@ public final class ActorJob {
   Actor actor;
   ActorTask task;
   ActorThread actorThread;
+  private final Map<String, String> openTelemetryMetaData = new ConcurrentHashMap<>();
+  private final TextMapGetter<ActorJob> actorJobTextMapGetter = new ActorJobTextMapGetter();
+  // TODO: fix
+  private final OpenTelemetry openTelemetry = GlobalOpenTelemetry.get();
   private Callable<?> callable;
   private Runnable runnable;
   private Object invocationResult;
@@ -82,16 +94,24 @@ public final class ActorJob {
   }
 
   private void invoke() throws Exception {
-    if (callable != null) {
-      invocationResult = callable.call();
-    } else {
-      // only tasks triggered by a subscription can "yield"; everything else just executes once
-      if (!isTriggeredBySubscription()) {
-        final Runnable r = runnable;
-        runnable = null;
-        r.run();
+    try (final Scope ignored =
+        openTelemetry
+            .getPropagators()
+            .getTextMapPropagator()
+            .extract(Context.current(), this, actorJobTextMapGetter)
+            .makeCurrent()) {
+
+      if (callable != null) {
+        invocationResult = callable.call();
       } else {
-        runnable.run();
+        // only tasks triggered by a subscription can "yield"; everything else just executes once
+        if (!isTriggeredBySubscription()) {
+          final Runnable r = runnable;
+          runnable = null;
+          r.run();
+        } else {
+          runnable.run();
+        }
       }
     }
   }
@@ -174,5 +194,13 @@ public final class ActorJob {
     if (resultFuture != null) {
       resultFuture.completeExceptionally(cause);
     }
+  }
+
+  public void putOpenTelemetryMetaData(final String key, final String value) {
+    openTelemetryMetaData.put(key, value);
+  }
+
+  public Map<String, String> getOpenTelemetryMetaData() {
+    return openTelemetryMetaData;
   }
 }

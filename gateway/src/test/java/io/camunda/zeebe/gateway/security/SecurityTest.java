@@ -20,6 +20,7 @@ import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.test.util.asserts.SslAssert;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.File;
 import java.io.IOException;
 import org.junit.jupiter.api.AfterEach;
@@ -141,7 +142,7 @@ final class SecurityTest {
   private Gateway buildGateway(final GatewayCfg gatewayCfg) {
     final var clusterAddress = SocketUtil.getNextAddress();
     final var atomix =
-        AtomixCluster.builder()
+        AtomixCluster.builder(OpenTelemetry.noop())
             .withAddress(Address.from(clusterAddress.getHostName(), clusterAddress.getPort()))
             .build();
     final var actorScheduler = ActorScheduler.newActorScheduler().build();

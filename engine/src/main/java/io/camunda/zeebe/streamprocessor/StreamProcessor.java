@@ -31,6 +31,7 @@ import io.camunda.zeebe.util.exception.UnrecoverableException;
 import io.camunda.zeebe.util.health.FailureListener;
 import io.camunda.zeebe.util.health.HealthMonitorable;
 import io.camunda.zeebe.util.health.HealthReport;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -113,6 +114,7 @@ public class StreamProcessor extends Actor implements HealthMonitorable, LogReco
   private StreamProcessorDbState streamProcessorDbState;
 
   protected StreamProcessor(final StreamProcessorBuilder processorBuilder) {
+    super(GlobalOpenTelemetry.get());
     actorSchedulingService = processorBuilder.getActorSchedulingService();
     lifecycleAwareListeners = processorBuilder.getLifecycleListeners();
     zeebeDb = processorBuilder.getZeebeDb();

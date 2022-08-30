@@ -21,6 +21,7 @@ import static com.google.common.base.Preconditions.checkState;
 import io.atomix.utils.net.Address;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
+import java.util.HashMap;
 import java.util.List;
 
 /** Protocol version 2 message decoder. */
@@ -125,7 +126,7 @@ class MessageDecoderV2 extends AbstractMessageDecoder {
             }
             final String subject = readString(buffer, subjectLength);
             final ProtocolRequest message =
-                new ProtocolRequest(messageId, senderAddress, subject, content);
+                new ProtocolRequest(messageId, senderAddress, subject, content, new HashMap<>());
             out.add(message);
             currentState = DecoderState.READ_TYPE;
             break;
@@ -140,7 +141,8 @@ class MessageDecoderV2 extends AbstractMessageDecoder {
               return;
             }
             final ProtocolReply.Status status = ProtocolReply.Status.forId(buffer.readByte());
-            final ProtocolReply message = new ProtocolReply(messageId, content, status);
+            final ProtocolReply message =
+                new ProtocolReply(messageId, content, status, new HashMap<>());
             out.add(message);
             currentState = DecoderState.READ_TYPE;
             break;

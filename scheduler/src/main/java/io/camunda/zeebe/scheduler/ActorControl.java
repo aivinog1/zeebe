@@ -16,6 +16,10 @@ import io.camunda.zeebe.scheduler.channel.ConsumableChannel;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.future.AllCompletedFutureConsumer;
 import io.camunda.zeebe.scheduler.future.FutureContinuationRunnable;
+import io.camunda.zeebe.scheduler.opentelemetry.actor.ActorJobTextMapSetter;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.propagation.TextMapSetter;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.concurrent.Callable;
@@ -27,21 +31,25 @@ import java.util.function.Function;
 public class ActorControl implements ConcurrencyControl {
   final ActorTask task;
   private final Actor actor;
+  private final TextMapSetter<ActorJob> actorJobTextMapSetter = new ActorJobTextMapSetter();
+  private final OpenTelemetry openTelemetry;
 
-  public ActorControl(final Actor actor) {
+  public ActorControl(final Actor actor, final OpenTelemetry openTelemetry) {
     this.actor = actor;
     task = new ActorTask(actor);
+    this.openTelemetry = openTelemetry;
   }
 
-  private ActorControl(final ActorTask task) {
+  private ActorControl(final ActorTask task, final OpenTelemetry openTelemetry) {
     actor = task.actor;
     this.task = task;
+    this.openTelemetry = openTelemetry;
   }
 
-  public static ActorControl current() {
+  public static ActorControl current(final OpenTelemetry openTelemetry) {
     final ActorThread actorThread = ensureCalledFromActorThread("ActorControl#current");
 
-    return new ActorControl(actorThread.currentTask);
+    return new ActorControl(actorThread.currentTask, openTelemetry);
   }
 
   /**
@@ -105,6 +113,10 @@ public class ActorControl implements ConcurrencyControl {
     final ActorJob job = new ActorJob();
     final ActorFuture<T> future = job.setCallable(callable);
     job.onJobAddedToTask(task);
+    openTelemetry
+        .getPropagators()
+        .getTextMapPropagator()
+        .inject(Context.current(), job, actorJobTextMapSetter);
     task.submit(job);
 
     return future;
@@ -234,6 +246,10 @@ public class ActorControl implements ConcurrencyControl {
 
     job.setRunnable(action);
     job.onJobAddedToTask(task);
+    openTelemetry
+        .getPropagators()
+        .getTextMapPropagator()
+        .inject(Context.current(), job, actorJobTextMapSetter);
     task.submit(job);
 
     if (currentTask != null && currentTask == task) {
@@ -281,7 +297,10 @@ public class ActorControl implements ConcurrencyControl {
 
     final ActorFutureSubscription subscription = futureSubscriptionSupplier.apply(continuationJob);
     continuationJob.setSubscription(subscription);
-
+    openTelemetry
+        .getPropagators()
+        .getTextMapPropagator()
+        .inject(Context.current(), continuationJob, actorJobTextMapSetter);
     future.block(task);
   }
 
@@ -334,11 +353,19 @@ public class ActorControl implements ConcurrencyControl {
       final ActorJob newJob = currentActorThread.newJob();
       newJob.setRunnable(runnable);
       newJob.onJobAddedToTask(task);
+      openTelemetry
+          .getPropagators()
+          .getTextMapPropagator()
+          .inject(Context.current(), newJob, actorJobTextMapSetter);
       task.insertJob(newJob);
     } else {
       final ActorJob job = new ActorJob();
       job.setRunnable(runnable);
       job.onJobAddedToTask(task);
+      openTelemetry
+          .getPropagators()
+          .getTextMapPropagator()
+          .inject(Context.current(), job, actorJobTextMapSetter);
       task.submit(job);
     }
   }

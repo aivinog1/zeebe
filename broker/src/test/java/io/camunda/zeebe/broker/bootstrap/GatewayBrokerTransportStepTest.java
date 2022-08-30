@@ -23,6 +23,7 @@ import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.TestConcurrencyControl;
 import io.camunda.zeebe.transport.impl.AtomixServerTransport;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.Collections;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +55,8 @@ class GatewayBrokerTransportStepTest {
             mockActorSchedulingService,
             mock(BrokerHealthCheckService.class),
             mock(ExporterRepository.class),
-            Collections.emptyList());
+            Collections.emptyList(),
+            OpenTelemetry.noop());
     testBrokerStartupContext.setConcurrencyControl(CONCURRENCY_CONTROL);
   }
 

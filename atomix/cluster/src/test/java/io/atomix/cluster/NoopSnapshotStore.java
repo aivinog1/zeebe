@@ -22,6 +22,7 @@ import io.camunda.zeebe.snapshots.PersistedSnapshot;
 import io.camunda.zeebe.snapshots.PersistedSnapshotListener;
 import io.camunda.zeebe.snapshots.ReceivableSnapshotStore;
 import io.camunda.zeebe.snapshots.ReceivedSnapshot;
+import io.opentelemetry.api.OpenTelemetry;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
@@ -76,7 +77,7 @@ class NoopSnapshotStore implements ReceivableSnapshotStore {
   @Override
   public ActorFuture<Void> copySnapshot(
       final PersistedSnapshot snapshot, final Path targetDirectory) {
-    return CompletableActorFuture.completed(null);
+    return CompletableActorFuture.completed(null, OpenTelemetry.noop());
   }
 
   @Override

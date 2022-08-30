@@ -18,6 +18,7 @@ import io.camunda.zeebe.broker.system.partitions.StateController;
 import io.camunda.zeebe.broker.system.partitions.TestPartitionTransitionContext;
 import io.camunda.zeebe.db.ZeebeDb;
 import io.camunda.zeebe.scheduler.testing.TestActorFuture;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +43,7 @@ class ZeebeDbPartitionTransitionStepTest {
     when(stateController.recover()).thenReturn(TestActorFuture.completedFuture(zeebeDb));
     transitionContext.setStateController(stateController);
 
-    step = new ZeebeDbPartitionTransitionStep();
+    step = new ZeebeDbPartitionTransitionStep(OpenTelemetry.noop());
   }
 
   @ParameterizedTest

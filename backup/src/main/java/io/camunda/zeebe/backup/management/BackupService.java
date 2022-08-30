@@ -17,6 +17,7 @@ import io.camunda.zeebe.scheduler.future.CompletableActorFuture;
 import io.camunda.zeebe.snapshots.PersistedSnapshotStore;
 import java.nio.file.Path;
 import java.util.function.Predicate;
+import io.opentelemetry.api.OpenTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,8 @@ public final class BackupService extends Actor implements BackupManager {
   private final PersistedSnapshotStore snapshotStore;
   private final Path segmentsDirectory;
   private final Predicate<Path> isSegmentsFile;
+  private final OpenTelemetry openTelemetry;
+
 
   public BackupService(
       final int nodeId,
@@ -38,7 +41,8 @@ public final class BackupService extends Actor implements BackupManager {
       final int numberOfPartitions,
       final PersistedSnapshotStore snapshotStore,
       final Predicate<Path> isSegmentsFile,
-      final Path segmentsDirectory) {
+      final Path segmentsDirectory,
+      final OpenTelemetry openTelemetry) {
     // Use a noop backup store until a proper backup store is available
     this(
         nodeId,
@@ -47,7 +51,8 @@ public final class BackupService extends Actor implements BackupManager {
         NoopBackupStore.INSTANCE,
         snapshotStore,
         segmentsDirectory,
-        isSegmentsFile);
+        isSegmentsFile,
+        openTelemetry);
   }
 
   public BackupService(
@@ -57,7 +62,9 @@ public final class BackupService extends Actor implements BackupManager {
       final BackupStore backupStore,
       final PersistedSnapshotStore snapshotStore,
       final Path segmentsDirectory,
-      final Predicate<Path> isSegmentsFile) {
+      final Predicate<Path> isSegmentsFile,
+      final OpenTelemetry openTelemetry) {
+    super(openTelemetry);
     this.nodeId = nodeId;
     this.partitionId = partitionId;
     this.numberOfPartitions = numberOfPartitions;
@@ -66,6 +73,7 @@ public final class BackupService extends Actor implements BackupManager {
     this.isSegmentsFile = isSegmentsFile;
     internalBackupManager = new BackupServiceImpl(backupStore);
     actorName = buildActorName(nodeId, "BackupService", partitionId);
+    this.openTelemetry = openTelemetry;
   }
 
   @Override
@@ -114,12 +122,12 @@ public final class BackupService extends Actor implements BackupManager {
   @Override
   public ActorFuture<BackupStatus> getBackupStatus(final long checkpointId) {
     return CompletableActorFuture.completedExceptionally(
-        new UnsupportedOperationException("Not implemented"));
+        new UnsupportedOperationException("Not implemented"), openTelemetry);
   }
 
   @Override
   public ActorFuture<Void> deleteBackup(final long checkpointId) {
     return CompletableActorFuture.completedExceptionally(
-        new UnsupportedOperationException("Not implemented"));
+        new UnsupportedOperationException("Not implemented"), openTelemetry);
   }
 }

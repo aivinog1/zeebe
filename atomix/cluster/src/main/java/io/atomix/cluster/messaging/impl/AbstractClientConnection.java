@@ -17,10 +17,16 @@
 package io.atomix.cluster.messaging.impl;
 
 import com.google.common.collect.Maps;
-import io.atomix.cluster.messaging.MessagingException;
+import io.atomix.cluster.messaging.MessagingException.NoRemoteHandler;
+import io.atomix.cluster.messaging.MessagingException.ProtocolException;
+import io.atomix.cluster.messaging.MessagingException.RemoteHandlerFailure;
 import io.camunda.zeebe.util.StringUtil;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.context.Context;
 import java.net.ConnectException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -41,15 +47,34 @@ abstract class AbstractClientConnection implements ClientConnection {
     if (responseFuture != null) {
       if (message.status() == ProtocolReply.Status.OK) {
         responseFuture.complete(message.payload());
+        Optional.ofNullable(Span.fromContextOrNull(Context.current()))
+            .map(span -> span.setStatus(StatusCode.OK));
       } else if (message.status() == ProtocolReply.Status.ERROR_NO_HANDLER) {
         final String subject = extractMessage(message);
-        responseFuture.completeExceptionally(new MessagingException.NoRemoteHandler(subject));
+        final NoRemoteHandler exception = new NoRemoteHandler(subject);
+        responseFuture.completeExceptionally(exception);
+        Optional.ofNullable(Span.fromContextOrNull(Context.current()))
+            .map(
+                span ->
+                    span.setAttribute("exceptionMessage", exception.getMessage())
+                        .setStatus(StatusCode.ERROR));
       } else if (message.status() == ProtocolReply.Status.ERROR_HANDLER_EXCEPTION) {
         final String exceptionMessage = extractMessage(message);
-        responseFuture.completeExceptionally(
-            new MessagingException.RemoteHandlerFailure(exceptionMessage));
+        final RemoteHandlerFailure exception = new RemoteHandlerFailure(exceptionMessage);
+        responseFuture.completeExceptionally(exception);
+        Optional.ofNullable(Span.fromContextOrNull(Context.current()))
+            .map(
+                span ->
+                    span.setAttribute("exceptionMessage", exception.getMessage())
+                        .setStatus(StatusCode.ERROR));
       } else if (message.status() == ProtocolReply.Status.PROTOCOL_EXCEPTION) {
-        responseFuture.completeExceptionally(new MessagingException.ProtocolException());
+        final ProtocolException protocolException = new ProtocolException();
+        responseFuture.completeExceptionally(protocolException);
+        Optional.ofNullable(Span.fromContextOrNull(Context.current()))
+            .map(
+                span ->
+                    span.setAttribute("exceptionMessage", protocolException.getMessage())
+                        .setStatus(StatusCode.ERROR));
       }
     } else {
       log.debug(

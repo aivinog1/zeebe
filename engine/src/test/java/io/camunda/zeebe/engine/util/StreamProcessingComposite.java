@@ -25,6 +25,7 @@ import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.streamprocessor.StreamProcessor;
 import io.camunda.zeebe.streamprocessor.StreamProcessorListener;
 import io.camunda.zeebe.streamprocessor.state.MutableLastProcessedPositionState;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -298,6 +299,11 @@ public class StreamProcessingComposite {
 
   /** Used to run writes within an actor thread. */
   private static final class WriteActor extends Actor {
+
+    WriteActor() {
+      super(OpenTelemetry.noop());
+    }
+
     public ActorFuture<Long> submit(final Callable<Long> write) {
       return actor.call(write);
     }

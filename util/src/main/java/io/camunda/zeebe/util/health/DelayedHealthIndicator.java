@@ -17,7 +17,6 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.Health.Builder;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.actuate.health.Status;
-import org.springframework.scheduling.annotation.Scheduled;
 
 /**
  * Wrapper for a health indicator that adds time tolerance to the underlying health indicator. When
@@ -46,7 +45,7 @@ public class DelayedHealthIndicator implements HealthIndicator {
   protected DelayedHealthIndicator(
       final HealthIndicator originalHealthIndicator,
       final Duration maxDowntime,
-      Supplier<Long> clock) {
+      final Supplier<Long> clock) {
     if (requireNonNull(maxDowntime).toMillis() < 0) {
       throw new IllegalArgumentException("maxDonwtime must be >= 0");
     }
@@ -63,7 +62,7 @@ public class DelayedHealthIndicator implements HealthIndicator {
     this(originalHealthIndicator, maxDowntime, () -> System.currentTimeMillis());
   }
 
-  @Scheduled(fixedDelay = 5000)
+  //  @Scheduled(fixedDelay = 5000)
   public void checkHealth() {
     lastHealthStatus = originalHealthIndicator.health();
 
@@ -92,7 +91,7 @@ public class DelayedHealthIndicator implements HealthIndicator {
     return responseBuilder.withDetails(createDetails(now)).build();
   }
 
-  private Map<String, Object> createDetails(long referenceTime) {
+  private Map<String, Object> createDetails(final long referenceTime) {
     final var result = new HashMap<>(staticDetails);
 
     if (lastHealthStatus != null) {

@@ -12,6 +12,7 @@ import io.camunda.zeebe.scheduler.Actor;
 import io.camunda.zeebe.snapshots.PersistedSnapshot;
 import io.camunda.zeebe.snapshots.PersistedSnapshotListener;
 import io.camunda.zeebe.snapshots.PersistedSnapshotStore;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Map;
 import java.util.Set;
 
@@ -25,7 +26,9 @@ public final class LogDeletionService extends Actor implements PersistedSnapshot
       final int nodeId,
       final int partitionId,
       final LogCompactor logCompactor,
-      final PersistedSnapshotStore persistedSnapshotStore) {
+      final PersistedSnapshotStore persistedSnapshotStore,
+      final OpenTelemetry openTelemetry) {
+    super(openTelemetry);
     this.persistedSnapshotStore = persistedSnapshotStore;
     this.logCompactor = logCompactor;
     actorName = buildActorName(nodeId, "DeletionService", partitionId);

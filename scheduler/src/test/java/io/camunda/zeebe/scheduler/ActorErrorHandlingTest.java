@@ -10,6 +10,7 @@ package io.camunda.zeebe.scheduler;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.camunda.zeebe.scheduler.testing.ControlledActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import org.agrona.LangUtil;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,6 +54,7 @@ public final class ActorErrorHandlingTest {
     public Throwable recordedFailure = null;
 
     public ThrowingActor(final Throwable throwable) {
+      super(OpenTelemetry.noop());
       this.throwable = throwable;
     }
 

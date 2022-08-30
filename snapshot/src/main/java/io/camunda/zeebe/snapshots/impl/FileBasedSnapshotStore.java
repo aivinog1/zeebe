@@ -22,6 +22,7 @@ import io.camunda.zeebe.snapshots.SnapshotId;
 import io.camunda.zeebe.snapshots.TransientSnapshot;
 import io.camunda.zeebe.util.Either;
 import io.camunda.zeebe.util.FileUtil;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -83,6 +84,7 @@ public final class FileBasedSnapshotStore extends Actor
       final SnapshotMetrics snapshotMetrics,
       final Path snapshotsDirectory,
       final Path pendingDirectory) {
+    super(GlobalOpenTelemetry.get());
     this.snapshotsDirectory = snapshotsDirectory;
     this.pendingDirectory = pendingDirectory;
     this.snapshotMetrics = snapshotMetrics;

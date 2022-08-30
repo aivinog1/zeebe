@@ -22,6 +22,7 @@ import io.camunda.zeebe.scheduler.clock.ControlledActorClock;
 import io.camunda.zeebe.test.broker.protocol.MsgPackHelper;
 import io.camunda.zeebe.transport.ClientTransport;
 import io.camunda.zeebe.transport.TransportFactory;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -101,7 +102,7 @@ public final class CommandApiRule extends ExternalResource {
 
   private ClientTransport createClientTransport() {
     final var atomixCluster = fetchAtomix();
-    return new TransportFactory(scheduler)
+    return new TransportFactory(scheduler, OpenTelemetry.noop())
         .createClientTransport(atomixCluster.getMessagingService());
   }
 

@@ -16,6 +16,7 @@ import io.camunda.zeebe.scheduler.CpuThreadGroup;
 import io.camunda.zeebe.scheduler.SchedulingHints;
 import io.camunda.zeebe.scheduler.future.ActorFuture;
 import io.camunda.zeebe.scheduler.testing.ActorSchedulerRule;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Rule;
@@ -33,7 +34,7 @@ public final class IoBoundActorsIntegrationTest {
     final AtomicReference<ActorThreadGroup> threadGroupRef =
         new AtomicReference<ActorThreadGroup>();
     final Actor actor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarting() {
             threadGroupRef.set(ActorThread.current().getActorThreadGroup());
@@ -56,7 +57,7 @@ public final class IoBoundActorsIntegrationTest {
     final AtomicBoolean isOnWrongThreadGroup = new AtomicBoolean();
     final CallableActor callableActor = new CallableActor(isOnWrongThreadGroup);
     final Actor ioBoundActor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarting() {
             for (int i = 0; i < 1_000; i++) {
@@ -88,7 +89,7 @@ public final class IoBoundActorsIntegrationTest {
     final AtomicBoolean isOnWrongThreadGroup = new AtomicBoolean();
     final CallableActor callableActor = new CallableActor(isOnWrongThreadGroup);
     final Actor ioBoundActor =
-        new Actor() {
+        new Actor(OpenTelemetry.noop()) {
           @Override
           protected void onActorStarting() {
             for (int i = 0; i < 1_000; i++) {
@@ -115,6 +116,7 @@ public final class IoBoundActorsIntegrationTest {
     private final AtomicBoolean isOnWrongThreadGroup;
 
     CallableActor(final AtomicBoolean isOnWrongThreadGroup) {
+      super(OpenTelemetry.noop());
       this.isOnWrongThreadGroup = isOnWrongThreadGroup;
     }
 

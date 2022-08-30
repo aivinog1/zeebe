@@ -45,6 +45,7 @@ import io.camunda.zeebe.test.broker.protocol.brokerapi.ExecuteCommandResponseBui
 import io.camunda.zeebe.test.broker.protocol.brokerapi.StubBrokerRule;
 import io.camunda.zeebe.test.util.socket.SocketUtil;
 import io.netty.util.NetUtil;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -82,7 +83,7 @@ public final class BrokerClientTest {
     final var stubNode = Node.builder().withAddress(stubAddress).build();
     final var listOfNodes = List.of(stubNode);
     atomixCluster =
-        AtomixCluster.builder()
+        AtomixCluster.builder(OpenTelemetry.noop())
             .withPort(SocketUtil.getNextAddress().getPort())
             .withMemberId("gateway")
             .withClusterId("cluster")
