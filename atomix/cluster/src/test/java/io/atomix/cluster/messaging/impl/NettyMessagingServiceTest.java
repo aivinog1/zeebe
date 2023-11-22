@@ -173,7 +173,8 @@ public class NettyMessagingServiceTest {
     response.whenComplete(
         (r, e) -> {
           assertNotNull(e);
-          assertTrue(e instanceof ConnectException);
+          assertTrue(e instanceof CompletionException);
+          assertTrue(e.getCause() instanceof ConnectException);
           latch2.countDown();
         });
     Uninterruptibles.awaitUninterruptibly(latch2);
