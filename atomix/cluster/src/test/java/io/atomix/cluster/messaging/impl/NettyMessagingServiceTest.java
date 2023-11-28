@@ -17,6 +17,7 @@
 package io.atomix.cluster.messaging.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -42,6 +43,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -61,6 +63,8 @@ import org.slf4j.Logger;
 public class NettyMessagingServiceTest {
 
   private static final Logger LOGGER = getLogger(NettyMessagingServiceTest.class);
+
+  private static final Executor CLIENT_EXECUTOR = Executors.newFixedThreadPool(2);
   private static final String IP_STRING = "127.0.0.1";
   ManagedMessagingService netty1;
   ManagedMessagingService netty2;
@@ -152,7 +156,11 @@ public class NettyMessagingServiceTest {
     final String subject = nextSubject();
     final CompletableFuture<Void> response =
         netty1.sendAsync(unresolvable, subject, "hello world".getBytes());
-    assertTrue(response.isCompletedExceptionally());
+    assertThatThrownBy(response::join)
+        .isInstanceOf(CompletionException.class)
+        .cause()
+        .isInstanceOf(ConnectException.class)
+        .hasMessageContaining("unknown.local");
   }
 
   @Test
@@ -603,7 +611,7 @@ public class NettyMessagingServiceTest {
       nettyWithOwnPool
           .sendAndReceive(address2, subject, "get channel".getBytes(), true, timeoutOnCreate)
           .join();
-      final var originalChannel = channelPool.getChannel(address2, subject).join();
+      final var originalChannel = channelPool.getChannel(address2, subject, CLIENT_EXECUTOR).join();
 
       // when - set up handler which will always cause timeouts
       netty2.unregisterHandler(subject);
@@ -644,7 +652,7 @@ public class NettyMessagingServiceTest {
       nettyWithOwnPool
           .sendAndReceive(address2, subject, "get channel".getBytes(), true, timeoutOnCreate)
           .join();
-      final var originalChannel = channelPool.getChannel(address2, subject).join();
+      final var originalChannel = channelPool.getChannel(address2, subject, CLIENT_EXECUTOR).join();
 
       // set up handler which will always cause timeouts
       netty2.unregisterHandler(subject);
@@ -669,7 +677,7 @@ public class NettyMessagingServiceTest {
           address2, subject, "success".getBytes(), true, timeoutOnCreate);
 
       // then
-      final var newChannel = channelPool.getChannel(address2, subject).join();
+      final var newChannel = channelPool.getChannel(address2, subject, CLIENT_EXECUTOR).join();
       assertThat(newChannel).isNotEqualTo(originalChannel);
     } finally {
       nettyWithOwnPool.stop().join();

@@ -60,7 +60,6 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.Future;
-import io.netty.util.concurrent.ThreadPerTaskExecutor;
 import java.net.ConnectException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -73,6 +72,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -105,8 +105,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
   private final List<CompletableFuture> openFutures;
   private final MessagingConfig config;
 
-  private Executor serverNettyExecutor;
-  private Executor clientNettyExecutor;
+  private final ExecutorService createChannelExecutor;
   private EventLoopGroup serverGroup;
   private EventLoopGroup clientGroup;
   private Class<? extends ServerChannel> serverChannelClass;
@@ -135,6 +134,10 @@ public final class NettyMessagingService implements ManagedMessagingService {
     this.protocolVersion = protocolVersion;
     this.config = config;
     channelPool = new ChannelPool(this::openChannel, config.getConnectionPoolSize());
+    createChannelExecutor =
+        Executors.newFixedThreadPool(
+            config.getChannelExecutorSize(),
+            namedThreads("atomix-cluster-channel-creator-%d", log));
 
     openFutures = new CopyOnWriteArrayList<>();
     initAddresses(config);
@@ -154,6 +157,10 @@ public final class NettyMessagingService implements ManagedMessagingService {
     this.protocolVersion = protocolVersion;
     this.config = config;
     channelPool = channelPoolFactor.apply(this::openChannel);
+    createChannelExecutor =
+        Executors.newFixedThreadPool(
+            config.getChannelExecutorSize(),
+            namedThreads("atomix-cluster-channel-creator-%d", log));
 
     openFutures = new CopyOnWriteArrayList<>();
     initAddresses(config);
@@ -419,6 +426,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
                 interrupted = true;
               }
               timeoutExecutor.shutdown();
+              createChannelExecutor.shutdown();
 
               for (final var entry : connections.entrySet()) {
                 final var channel = entry.getKey();
@@ -488,23 +496,19 @@ public final class NettyMessagingService implements ManagedMessagingService {
   }
 
   private void initEpollTransport() {
-    clientNettyExecutor =
-        new ThreadPerTaskExecutor(namedThreads("netty-messaging-event-epoll-client-%d", log));
-    clientGroup = new EpollEventLoopGroup(0, clientNettyExecutor);
-    serverNettyExecutor =
-        new ThreadPerTaskExecutor(namedThreads("netty-messaging-event-epoll-server-%d", log));
-    serverGroup = new EpollEventLoopGroup(0, serverNettyExecutor);
+    clientGroup =
+        new EpollEventLoopGroup(0, namedThreads("netty-messaging-event-epoll-client-%d", log));
+    serverGroup =
+        new EpollEventLoopGroup(0, namedThreads("netty-messaging-event-epoll-server-%d", log));
     serverChannelClass = EpollServerSocketChannel.class;
     clientChannelClass = EpollSocketChannel.class;
   }
 
   private void initNioTransport() {
-    clientNettyExecutor =
-        new ThreadPerTaskExecutor(namedThreads("netty-messaging-event-epoll-client-%d", log));
-    clientGroup = new NioEventLoopGroup(0, clientNettyExecutor);
-    serverNettyExecutor =
-        new ThreadPerTaskExecutor(namedThreads("netty-messaging-event-epoll-server-%d", log));
-    serverGroup = new NioEventLoopGroup(0, serverNettyExecutor);
+    clientGroup =
+        new NioEventLoopGroup(0, namedThreads("netty-messaging-event-nio-client-%d", log));
+    serverGroup =
+        new NioEventLoopGroup(0, namedThreads("netty-messaging-event-nio-server-%d", log));
     serverChannelClass = NioServerSocketChannel.class;
     clientChannelClass = NioSocketChannel.class;
   }
@@ -561,7 +565,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
 
     openFutures.add(responseFuture);
     channelPool
-        .getChannel(address, type)
+        .getChannel(address, type, createChannelExecutor)
         .whenComplete(
             (channel, channelError) -> {
               if (channelError == null) {
@@ -705,7 +709,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
    */
   private CompletableFuture<Channel> bootstrapClient(final Address address) {
     return OrderedFuture.wrap(
-            CompletableFuture.supplyAsync(() -> address.address(true), clientNettyExecutor))
+            CompletableFuture.supplyAsync(() -> address.address(true), createChannelExecutor))
         .thenCompose(
             (resolvedAddress) -> {
               if (resolvedAddress == null) {

@@ -16,11 +16,14 @@ import io.netty.channel.Channel;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 class ChannelPoolTest {
   private static final String MESSAGE_TYPE = "test";
+  private static final Executor CLIENT_EXECUTOR = Executors.newFixedThreadPool(2);
   private final Function<Address, CompletableFuture<Channel>> factory =
       a -> {
         final var channel = mock(Channel.class);
@@ -34,12 +37,14 @@ class ChannelPoolTest {
     // given
     final Address addressWithOldIP =
         new Address("foo.bar", 1234, InetAddress.getByName("10.1.1.1"));
-    final var channelForOldIP = channelPool.getChannel(addressWithOldIP, MESSAGE_TYPE).join();
+    final var channelForOldIP =
+        channelPool.getChannel(addressWithOldIP, MESSAGE_TYPE, CLIENT_EXECUTOR).join();
 
     // when
     final Address addressWithNewIP =
         new Address("foo.bar", 1234, InetAddress.getByName("10.1.1.2"));
-    final var channelForNewIP = channelPool.getChannel(addressWithNewIP, "test").join();
+    final var channelForNewIP =
+        channelPool.getChannel(addressWithNewIP, "test", CLIENT_EXECUTOR).join();
 
     // then
     assertThat(channelForOldIP).isNotEqualTo(channelForNewIP);
@@ -49,12 +54,14 @@ class ChannelPoolTest {
   void shouldNotUseIncorrectChannelWhenIPReused() throws UnknownHostException {
     // given
     final Address nodeWithSameIP = new Address("foo.bar", 1234, InetAddress.getByName("10.1.1.1"));
-    final var channelForOldNode = channelPool.getChannel(nodeWithSameIP, MESSAGE_TYPE).join();
+    final var channelForOldNode =
+        channelPool.getChannel(nodeWithSameIP, MESSAGE_TYPE, CLIENT_EXECUTOR).join();
 
     // when
     final Address newNodeWithSameIP =
         new Address("foo.foo", 1234, InetAddress.getByName("10.1.1.1"));
-    final var channelForNewNode = channelPool.getChannel(newNodeWithSameIP, MESSAGE_TYPE).join();
+    final var channelForNewNode =
+        channelPool.getChannel(newNodeWithSameIP, MESSAGE_TYPE, CLIENT_EXECUTOR).join();
 
     // then
     assertThat(channelForOldNode).isNotEqualTo(channelForNewNode);
