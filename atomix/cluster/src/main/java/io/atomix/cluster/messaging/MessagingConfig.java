@@ -34,6 +34,17 @@ public class MessagingConfig implements Config {
   private File privateKey;
   private CompressionAlgorithm compressionAlgorithm = CompressionAlgorithm.NONE;
 
+  private int channelExecutorSize = 3;
+
+  public int getChannelExecutorSize() {
+    return channelExecutorSize;
+  }
+
+  public MessagingConfig setChannelExecutorSize(final int channelExecutorSize) {
+    this.channelExecutorSize = channelExecutorSize;
+    return this;
+  }
+
   /**
    * Returns the local interfaces to which to bind the node.
    *

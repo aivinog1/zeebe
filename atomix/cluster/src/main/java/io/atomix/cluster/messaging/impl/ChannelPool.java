@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,89 +87,101 @@ class ChannelPool {
    *
    * @param address the address for which to get the channel
    * @param messageType the message type for which to get the channel
+   * @param executor the Executor that will be used to resolve addresses, other network stuff
    * @return a future to be completed with a channel from the pool
    */
-  CompletableFuture<Channel> getChannel(final Address address, final String messageType) {
-    final InetAddress inetAddress = address.address();
-    if (inetAddress == null) {
-      final CompletableFuture<Channel> failedFuture = new OrderedFuture<>();
-      failedFuture.completeExceptionally(
-          new ConnectException("Failed to resolve address %s".formatted(address)));
-      return failedFuture;
-    }
-    final List<CompletableFuture<Channel>> channelPool = getChannelPool(address, inetAddress);
-    final int offset = getChannelOffset(messageType);
-
-    CompletableFuture<Channel> channelFuture = channelPool.get(offset);
-    if (channelFuture == null || channelFuture.isCompletedExceptionally()) {
-      synchronized (channelPool) {
-        channelFuture = channelPool.get(offset);
-        if (channelFuture == null || channelFuture.isCompletedExceptionally()) {
-          LOGGER.debug("Connecting to {}", address);
-          channelFuture = factory.apply(address);
-          final var finalFuture = channelFuture;
-          channelFuture.whenComplete(
-              (channel, error) -> {
-                if (error == null) {
-                  LOGGER.debug("Connected to {}", channel.remoteAddress());
-                  // Remove channel from the pool when it is closed
-                  channel
-                      .closeFuture()
-                      .addListener(
-                          closed -> {
-                            synchronized (channelPool) {
-                              // Remove channel from the pool after it is closed.
-                              removeChannel(channelPool, offset, finalFuture);
-                            }
-                          });
-                } else {
-                  LOGGER.debug("Failed to connect to {}", address, error);
-                }
-              });
-          channelPool.set(offset, channelFuture);
-        }
-      }
-    }
-
-    final CompletableFuture<Channel> future = new CompletableFuture<>();
-    final CompletableFuture<Channel> finalFuture = channelFuture;
-    finalFuture.whenComplete(
-        (channel, error) -> {
-          if (error == null) {
-            if (!channel.isActive()) {
-              CompletableFuture<Channel> currentFuture;
-              synchronized (channelPool) {
-                currentFuture = channelPool.get(offset);
-                if (currentFuture == finalFuture) {
-                  channelPool.set(offset, null);
-                } else if (currentFuture == null) {
-                  currentFuture = factory.apply(address);
-                  currentFuture.whenComplete(this::logConnection);
-                  channelPool.set(offset, currentFuture);
-                }
-              }
-
-              if (currentFuture == finalFuture) {
-                getChannel(address, messageType)
-                    .whenComplete(
-                        (recursiveResult, recursiveError) -> {
-                          completeFuture(future, recursiveResult, recursiveError);
-                        });
+  CompletableFuture<Channel> getChannel(
+      final Address address, final String messageType, final Executor executor) {
+    return CompletableFuture.supplyAsync(address::address, executor)
+        .thenCompose(
+            (resolvedAddress) -> {
+              if (resolvedAddress == null) {
+                final OrderedFuture<InetAddress> result = new OrderedFuture<>();
+                result.completeExceptionally(
+                    new ConnectException("Failed to resolve address %s".formatted(address)));
+                return result;
               } else {
-                // LGTM false positive https://github.com/Semmle/ql/issues/3176
-                currentFuture.whenComplete( // lgtm [java/dereferenced-value-may-be-null]
-                    (recursiveResult, recursiveError) -> {
-                      completeFuture(future, recursiveResult, recursiveError);
-                    });
+                return OrderedFuture.wrap(
+                    CompletableFuture.supplyAsync(() -> resolvedAddress, executor));
               }
-            } else {
-              future.complete(channel);
-            }
-          } else {
-            future.completeExceptionally(error);
-          }
-        });
-    return future;
+            })
+        .thenCompose(
+            (resolvedAddress) -> {
+              final List<CompletableFuture<Channel>> channelPool =
+                  getChannelPool(address, resolvedAddress);
+              final int offset = getChannelOffset(messageType);
+
+              CompletableFuture<Channel> channelFuture = channelPool.get(offset);
+              if (channelFuture == null || channelFuture.isCompletedExceptionally()) {
+                synchronized (channelPool) {
+                  channelFuture = channelPool.get(offset);
+                  if (channelFuture == null || channelFuture.isCompletedExceptionally()) {
+                    LOGGER.debug("Connecting to {}", address);
+                    channelFuture = factory.apply(address);
+                    final var finalFuture = channelFuture;
+                    channelFuture.whenComplete(
+                        (channel, error) -> {
+                          if (error == null) {
+                            LOGGER.debug("Connected to {}", channel.remoteAddress());
+                            // Remove channel from the pool when it is closed
+                            channel
+                                .closeFuture()
+                                .addListener(
+                                    closed -> {
+                                      synchronized (channelPool) {
+                                        // Remove channel from the pool after it is closed.
+                                        removeChannel(channelPool, offset, finalFuture);
+                                      }
+                                    });
+                          } else {
+                            LOGGER.debug("Failed to connect to {}", address, error);
+                          }
+                        });
+                    channelPool.set(offset, channelFuture);
+                  }
+                }
+              }
+
+              final CompletableFuture<Channel> future = new CompletableFuture<>();
+              final CompletableFuture<Channel> finalFuture = channelFuture;
+              finalFuture.whenComplete(
+                  (channel, error) -> {
+                    if (error == null) {
+                      if (!channel.isActive()) {
+                        CompletableFuture<Channel> currentFuture;
+                        synchronized (channelPool) {
+                          currentFuture = channelPool.get(offset);
+                          if (currentFuture == finalFuture) {
+                            channelPool.set(offset, null);
+                          } else if (currentFuture == null) {
+                            currentFuture = factory.apply(address);
+                            currentFuture.whenComplete(this::logConnection);
+                            channelPool.set(offset, currentFuture);
+                          }
+                        }
+
+                        if (currentFuture == finalFuture) {
+                          getChannel(address, messageType, executor)
+                              .whenComplete(
+                                  (recursiveResult, recursiveError) -> {
+                                    completeFuture(future, recursiveResult, recursiveError);
+                                  });
+                        } else {
+                          // LGTM false positive https://github.com/Semmle/ql/issues/3176
+                          currentFuture.whenComplete( // lgtm [java/dereferenced-value-may-be-null]
+                              (recursiveResult, recursiveError) -> {
+                                completeFuture(future, recursiveResult, recursiveError);
+                              });
+                        }
+                      } else {
+                        future.complete(channel);
+                      }
+                    } else {
+                      future.completeExceptionally(error);
+                    }
+                  });
+              return future;
+            });
   }
 
   private static void removeChannel(

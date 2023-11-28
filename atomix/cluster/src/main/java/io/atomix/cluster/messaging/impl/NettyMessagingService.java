@@ -61,7 +61,6 @@ import io.netty.handler.ssl.SslProvider;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.Future;
 import java.net.ConnectException;
-import java.net.InetAddress;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -73,6 +72,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -105,6 +105,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
   private final List<CompletableFuture> openFutures;
   private final MessagingConfig config;
 
+  private final ExecutorService createChannelExecutor;
   private EventLoopGroup serverGroup;
   private EventLoopGroup clientGroup;
   private Class<? extends ServerChannel> serverChannelClass;
@@ -133,6 +134,10 @@ public final class NettyMessagingService implements ManagedMessagingService {
     this.protocolVersion = protocolVersion;
     this.config = config;
     channelPool = new ChannelPool(this::openChannel, config.getConnectionPoolSize());
+    createChannelExecutor =
+        Executors.newFixedThreadPool(
+            config.getChannelExecutorSize(),
+            namedThreads("atomix-cluster-channel-creator-%d", log));
 
     openFutures = new CopyOnWriteArrayList<>();
     initAddresses(config);
@@ -152,6 +157,10 @@ public final class NettyMessagingService implements ManagedMessagingService {
     this.protocolVersion = protocolVersion;
     this.config = config;
     channelPool = channelPoolFactor.apply(this::openChannel);
+    createChannelExecutor =
+        Executors.newFixedThreadPool(
+            config.getChannelExecutorSize(),
+            namedThreads("atomix-cluster-channel-creator-%d", log));
 
     openFutures = new CopyOnWriteArrayList<>();
     initAddresses(config);
@@ -417,6 +426,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
                 interrupted = true;
               }
               timeoutExecutor.shutdown();
+              createChannelExecutor.shutdown();
 
               for (final var entry : connections.entrySet()) {
                 final var channel = entry.getKey();
@@ -555,7 +565,7 @@ public final class NettyMessagingService implements ManagedMessagingService {
 
     openFutures.add(responseFuture);
     channelPool
-        .getChannel(address, type)
+        .getChannel(address, type, createChannelExecutor)
         .whenComplete(
             (channel, channelError) -> {
               if (channelError == null) {
@@ -698,64 +708,77 @@ public final class NettyMessagingService implements ManagedMessagingService {
    * @return a future to be completed with the connected channel
    */
   private CompletableFuture<Channel> bootstrapClient(final Address address) {
-    final CompletableFuture<Channel> future = new OrderedFuture<>();
-    final InetAddress resolvedAddress = address.address(true);
-    if (resolvedAddress == null) {
-      future.completeExceptionally(
-          new ConnectException(
-              "Failed to bootstrap client (address "
-                  + address.toString()
-                  + " cannot be resolved)"));
-      return future;
-    }
-
-    final Bootstrap bootstrap = new Bootstrap();
-    bootstrap.option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
-    bootstrap.option(
-        ChannelOption.WRITE_BUFFER_WATER_MARK,
-        new WriteBufferWaterMark(10 * 32 * 1024, 10 * 64 * 1024));
-    bootstrap.option(ChannelOption.SO_RCVBUF, 1024 * 1024);
-    bootstrap.option(ChannelOption.SO_SNDBUF, 1024 * 1024);
-    bootstrap.option(ChannelOption.SO_KEEPALIVE, true);
-    bootstrap.option(ChannelOption.TCP_NODELAY, true);
-    bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
-    bootstrap.group(clientGroup);
-    // TODO: Make this faster:
-    // http://normanmaurer.me/presentations/2014-facebook-eng-netty/slides.html#37.0
-    bootstrap.channel(clientChannelClass);
-    bootstrap.remoteAddress(resolvedAddress, address.port());
-    bootstrap.handler(new BasicClientChannelInitializer(future));
-    final Channel channel =
-        bootstrap
-            .connect()
-            .addListener(
-                onConnect -> {
-                  if (!onConnect.isSuccess()) {
-                    future.completeExceptionally(
-                        new ConnectException(
-                            String.format(
-                                "Failed to connect channel for address %s (resolved: %s) : %s",
-                                address, address.address(), onConnect.cause())));
-                  }
-                })
-            .channel();
-
-    // immediately ensure we're notified of the channel being closed. the common case is that the
-    // channel is closed after we've handled the request (and response in the case of a
-    // sendAndReceive operation), so the future is already completed by then. If it isn't, then the
-    // channel was closed too early, which should be handled as a failure from the consumer point
-    // of view.
-    channel
-        .closeFuture()
-        .addListener(
-            onClose ->
-                future.completeExceptionally(
+    return OrderedFuture.wrap(
+            CompletableFuture.supplyAsync(() -> address.address(true), createChannelExecutor))
+        .thenCompose(
+            (resolvedAddress) -> {
+              if (resolvedAddress == null) {
+                return CompletableFuture.failedFuture(
                     new ConnectException(
-                        String.format(
-                            "Channel %s for address %s was closed unexpectedly before the request was handled",
-                            channel, address))));
+                        "Failed to bootstrap client (address "
+                            + address.toString()
+                            + " cannot be resolved)"));
+              } else {
+                return CompletableFuture.supplyAsync(() -> resolvedAddress);
+              }
+            })
+        .thenApply(
+            (resolvedAddress) -> {
+              final Bootstrap bootstrap = new Bootstrap();
+              bootstrap.option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+              bootstrap.option(
+                  ChannelOption.WRITE_BUFFER_WATER_MARK,
+                  new WriteBufferWaterMark(10 * 32 * 1024, 10 * 64 * 1024));
+              bootstrap.option(ChannelOption.SO_RCVBUF, 1024 * 1024);
+              bootstrap.option(ChannelOption.SO_SNDBUF, 1024 * 1024);
+              bootstrap.option(ChannelOption.SO_KEEPALIVE, true);
+              bootstrap.option(ChannelOption.TCP_NODELAY, true);
+              bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
+              bootstrap.group(clientGroup);
+              // TODO: Make this faster:
+              // http://normanmaurer.me/presentations/2014-facebook-eng-netty/slides.html#37.0
+              bootstrap.channel(clientChannelClass);
+              bootstrap.remoteAddress(resolvedAddress, address.port());
+              return bootstrap;
+            })
+        .thenCompose(
+            bootstrap -> {
+              final CompletableFuture<Channel> future = new OrderedFuture<>();
+              bootstrap.handler(new BasicClientChannelInitializer(future));
+              final Channel channel =
+                  bootstrap
+                      .connect()
+                      .addListener(
+                          onConnect -> {
+                            if (!onConnect.isSuccess()) {
+                              future.completeExceptionally(
+                                  new ConnectException(
+                                      String.format(
+                                          "Failed to connect channel for address %s (resolved: %s) : %s",
+                                          address, address.address(), onConnect.cause())));
+                            }
+                          })
+                      .channel();
 
-    return future;
+              // immediately ensure we're notified of the channel being closed. the common case is
+              // that the
+              // channel is closed after we've handled the request (and response in the case of a
+              // sendAndReceive operation), so the future is already completed by then. If it isn't,
+              // then the
+              // channel was closed too early, which should be handled as a failure from the
+              // consumer point
+              // of view.
+              channel
+                  .closeFuture()
+                  .addListener(
+                      onClose ->
+                          future.completeExceptionally(
+                              new ConnectException(
+                                  String.format(
+                                      "Channel %s for address %s was closed unexpectedly before the request was handled",
+                                      channel, address))));
+              return future;
+            });
   }
 
   /**
