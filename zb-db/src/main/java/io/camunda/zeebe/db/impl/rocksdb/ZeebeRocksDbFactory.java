@@ -29,6 +29,7 @@ import org.rocksdb.CompressionType;
 import org.rocksdb.DBOptions;
 import org.rocksdb.DataBlockIndexType;
 import org.rocksdb.IndexType;
+import org.rocksdb.InfoLogLevel;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.RateLimiter;
@@ -38,9 +39,13 @@ import org.rocksdb.SstPartitionerFixedPrefixFactory;
 import org.rocksdb.Statistics;
 import org.rocksdb.StatsLevel;
 import org.rocksdb.TableFormatConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ZeebeRocksDbFactory<ColumnFamilyType extends Enum<ColumnFamilyType>>
     implements ZeebeDbFactory<ColumnFamilyType> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ZeebeRocksDbFactory.class);
 
   static {
     RocksDB.loadLibrary();
@@ -123,6 +128,7 @@ public final class ZeebeRocksDbFactory<ColumnFamilyType extends Enum<ColumnFamil
             // keep 1 hour of logs - completely arbitrary. we should keep what we think would be
             // a good balance between useful for performance and small for replication
             .setLogFileTimeToRoll(Duration.ofMinutes(30).toSeconds())
+            .setInfoLogLevel(InfoLogLevel.DEBUG_LEVEL)
             .setKeepLogFileNum(2);
 
     // limit I/O writes

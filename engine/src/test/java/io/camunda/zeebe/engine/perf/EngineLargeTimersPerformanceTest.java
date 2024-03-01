@@ -9,17 +9,20 @@ package io.camunda.zeebe.engine.perf;
 
 import io.camunda.zeebe.engine.perf.TestEngine.TestContext;
 import io.camunda.zeebe.engine.util.client.ProcessInstanceClient;
-import io.camunda.zeebe.model.bpmn.Bpmn;
 import io.camunda.zeebe.protocol.record.Record;
-import io.camunda.zeebe.protocol.record.intent.JobIntent;
-import io.camunda.zeebe.protocol.record.value.JobRecordValue;
+import io.camunda.zeebe.protocol.record.intent.MessageSubscriptionIntent;
+import io.camunda.zeebe.protocol.record.value.MessageSubscriptionRecordValue;
 import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.scheduler.clock.DefaultActorClock;
 import io.camunda.zeebe.test.util.AutoCloseableRule;
 import io.camunda.zeebe.test.util.jmh.JMHTestCase;
 import io.camunda.zeebe.test.util.junit.JMHTest;
 import io.camunda.zeebe.test.util.record.RecordingExporter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.rules.TemporaryFolder;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -51,9 +54,11 @@ import org.slf4j.LoggerFactory;
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @State(org.openjdk.jmh.annotations.Scope.Benchmark)
-public class EngineLargeStatePerformanceTest {
+public class EngineLargeTimersPerformanceTest {
   public static final Logger LOG =
-      LoggerFactory.getLogger(EngineLargeStatePerformanceTest.class.getName());
+      LoggerFactory.getLogger(EngineLargeTimersPerformanceTest.class.getName());
+  private static final String PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID =
+      "process-large-timers-messages";
 
   private long count;
   private ProcessInstanceClient processInstanceClient;
@@ -71,22 +76,32 @@ public class EngineLargeStatePerformanceTest {
 
   /** Will build up a state for the large state performance test */
   private void setupState(final TestEngine singlePartitionEngine) {
+
+    final ByteArrayOutputStream stream = new ByteArrayOutputStream();
+    try (final InputStream bpmnResource =
+        EngineLargeTimersPerformanceTest.class.getResourceAsStream(
+            "/message-with-timer-to-link.bpmn")) {
+      final byte[] bytes = bpmnResource.readAllBytes();
+      try (stream) {
+        stream.writeBytes(bytes);
+      }
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     singlePartitionEngine
         .createDeploymentClient()
-        .withXmlResource(
-            Bpmn.createExecutableProcess("process")
-                .startEvent()
-                .serviceTask("task", (t) -> t.zeebeJobType("task").done())
-                .endEvent()
-                .done())
+        .withXmlResource(stream.toByteArray(), "process-large-timers-performance-test.xml")
         .deploy();
 
     processInstanceClient = singlePartitionEngine.createProcessInstanceClient();
 
-    final int maxInstanceCount = 200_000;
+    final int maxInstanceCount = 0;
     LOG.info("Starting {} process instances, please hold the line...", maxInstanceCount);
     for (int i = 0; i < maxInstanceCount; i++) {
-      processInstanceClient.ofBpmnProcessId("process").create();
+      processInstanceClient
+          .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID)
+          .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
+          .create();
       count++;
       RecordingExporter.reset();
 
@@ -103,6 +118,7 @@ public class EngineLargeStatePerformanceTest {
     final var autoCloseableRule = new AutoCloseableRule();
     final var temporaryFolder = new TemporaryFolder();
     temporaryFolder.create();
+    LOG.info("Temporary folder for this run: {}", temporaryFolder.getRoot());
 
     // scheduler
     final var builder =
@@ -125,18 +141,22 @@ public class EngineLargeStatePerformanceTest {
 
   @Benchmark
   public Record<?> measureProcessExecutionTime() {
-    final long piKey = processInstanceClient.ofBpmnProcessId("process").create();
+    final long piKey =
+        processInstanceClient
+            .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID)
+            .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
+            .create();
 
-    final Record<JobRecordValue> task =
-        RecordingExporter.jobRecords()
-            .withIntent(JobIntent.CREATED)
-            .withType("task")
+    final Record<MessageSubscriptionRecordValue> message =
+        RecordingExporter.messageSubscriptionRecords()
+            .withIntent(MessageSubscriptionIntent.CREATED)
+            .withMessageName("message-process-large-timers-message")
             .withProcessInstanceKey(piKey)
             .getFirst();
 
     count++;
     singlePartitionEngine.reset();
-    return task;
+    return message;
   }
 
   @JMHTest(value = "measureProcessExecutionTime")

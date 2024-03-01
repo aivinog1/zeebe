@@ -83,4 +83,19 @@ public final class JMHAssert extends AbstractAssert<JMHAssert, RunResult> {
 
     return myself;
   }
+
+  public JMHAssert isMinimumScoreAtLeast(final double referenceMin, final double maxDeviation) {
+    final double min = actual.getPrimaryResult().getStatistics().getMin();
+    final double acceptableMin = referenceMin - referenceMin * maxDeviation;
+    if (min < acceptableMin) {
+      throwAssertionError(
+          new BasicErrorMessageFactory(
+              "Expected reference min to be at least %s (with %s max deviation, i.e. %s), but got %s",
+              DECIMAL_FORMAT.format(referenceMin),
+              DECIMAL_FORMAT.format(maxDeviation * 100) + "%",
+              DECIMAL_FORMAT.format(acceptableMin),
+              DECIMAL_FORMAT.format(min)));
+    }
+    return myself;
+  }
 }
