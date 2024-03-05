@@ -42,6 +42,11 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
   private static final String ERROR_MESSAGE_CLOSE_RESOURCE =
       "Expected to close RocksDB resource successfully, but exception was thrown. Will continue to close remaining resources.";
   private final OptimisticTransactionDB optimisticTransactionDB;
+
+  public OptimisticTransactionDB getOptimisticTransactionDB() {
+    return optimisticTransactionDB;
+  }
+
   private final List<AutoCloseable> closables;
   private final ReadOptions prefixReadOptions;
   private final ReadOptions defaultReadOptions;
@@ -69,9 +74,10 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
             // setting a positive value to read-ahead is only useful when using network storage with
             // high latency, at the cost of making iterators more expensive (memory and computation
             // wise)
-            .setReadaheadSize(0);
+            .setReadaheadSize(0)
+            .setAsyncIo(true);
     closables.add(prefixReadOptions);
-    defaultReadOptions = new ReadOptions();
+    defaultReadOptions = new ReadOptions().setAsyncIo(true);
     closables.add(defaultReadOptions);
     defaultWriteOptions = new WriteOptions().setDisableWAL(rocksDbConfiguration.isWalDisabled());
     closables.add(defaultWriteOptions);

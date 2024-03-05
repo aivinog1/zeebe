@@ -17,9 +17,15 @@ import io.camunda.zeebe.db.impl.DbLong;
 import io.camunda.zeebe.db.impl.DbNil;
 import io.camunda.zeebe.engine.state.mutable.MutableTimerInstanceState;
 import io.camunda.zeebe.protocol.ZbColumnFamilies;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import org.apache.commons.lang3.time.StopWatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class DbTimerInstanceState implements MutableTimerInstanceState {
+
+  public static final Logger LOGGER = LoggerFactory.getLogger(DbTimerInstanceState.class);
 
   private final ColumnFamily<DbCompositeKey<DbForeignKey<DbLong>, DbLong>, TimerInstance>
       timerInstanceColumnFamily;
@@ -86,31 +92,41 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
   @Override
   public long processTimersWithDueDateBefore(final long timestamp, final TimerVisitor consumer) {
     nextDueDate = -1L;
+    final StopWatch stopWatch = StopWatch.create();
+    try {
+      stopWatch.start();
+      dueDateColumnFamily.whileTrue(
+          (key, nil) -> {
+            final var dueDate = key.first().getValue();
+            final var elementAndTimerKey = key.second();
 
-    dueDateColumnFamily.whileTrue(
-        (key, nil) -> {
-          final var dueDate = key.first().getValue();
-          final var elementAndTimerKey = key.second();
-
-          boolean consumed = false;
-          if (dueDate <= timestamp) {
-            final var timerInstance = timerInstanceColumnFamily.get(elementAndTimerKey);
-            if (timerInstance == null) {
-              // Time for due date no longer exists. This can occur due to the following data race:
-              // 1. Scheduled task reads a due date for a timer
-              // 2. Processing removes timer and due date
-              // 3. Scheduled task fails to find timer
-              // Because timer and due date were already removed, we can ignore this here.
-              return true;
+            boolean consumed = false;
+            if (dueDate <= timestamp) {
+              final var timerInstance = timerInstanceColumnFamily.get(elementAndTimerKey);
+              if (timerInstance == null) {
+                // Time for due date no longer exists. This can occur due to the following data
+                // race:
+                // 1. Scheduled task reads a due date for a timer
+                // 2. Processing removes timer and due date
+                // 3. Scheduled task fails to find timer
+                // Because timer and due date were already removed, we can ignore this here.
+                return true;
+              }
+              consumed = consumer.visit(timerInstance);
             }
-            consumed = consumer.visit(timerInstance);
-          }
 
-          if (!consumed) {
-            nextDueDate = dueDate;
-          }
-          return consumed;
-        });
+            if (!consumed) {
+              nextDueDate = dueDate;
+            }
+            return consumed;
+          });
+    } finally {
+      stopWatch.stop();
+    }
+    final long elapsedTimeInMs = stopWatch.getTime(TimeUnit.MILLISECONDS);
+    if (elapsedTimeInMs >= 10) {
+      LOGGER.info("processTimersWithDueDateBefore >= 10ms: {}ms. timestamp: {}, timerVisitor: {}", elapsedTimeInMs, timestamp, consumer);
+    }
 
     return nextDueDate;
   }

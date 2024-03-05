@@ -17,14 +17,25 @@ import io.camunda.zeebe.db.DbValue;
 import io.camunda.zeebe.db.KeyValuePairVisitor;
 import io.camunda.zeebe.db.TransactionContext;
 import io.camunda.zeebe.db.ZeebeDbInconsistentException;
+import java.nio.ByteBuffer;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.agrona.DirectBuffer;
+import org.apache.commons.lang3.time.StopWatch;
+import org.rocksdb.PerfContext;
+import org.rocksdb.PerfLevel;
 import org.rocksdb.ReadOptions;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
+import org.rocksdb.RocksIteratorInterface;
+import org.rocksdb.Snapshot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Some code conventions that we should follow here:
@@ -44,6 +55,8 @@ class TransactionalColumnFamily<
         KeyType extends DbKey,
         ValueType extends DbValue>
     implements ColumnFamily<KeyType, ValueType> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(TransactionalColumnFamily.class);
 
   private final ZeebeTransactionDb<ColumnFamilyNames> transactionDb;
   private final ConsistencyChecksSettings consistencyChecksSettings;
@@ -368,26 +381,79 @@ class TransactionalColumnFamily<
      *
      * <p>While iterating over subsequent keys we have to validate it.
      */
-    columnFamilyContext.withPrefixKey(
-        prefix,
-        (prefixKey, prefixLength) -> {
-          try (final RocksIterator iterator =
-              newIterator(context, transactionDb.getPrefixReadOptions())) {
+    final StopWatch stopWatch = StopWatch.create();
+    try {
+      stopWatch.start();
+      columnFamilyContext.withPrefixKey(
+          prefix,
+          (prefixKey, prefixLength) -> {
+            try (final RocksdbMeasuredIteratorWrapper iterator =
+                new RocksdbMeasuredIteratorWrapper(
+                    newIterator(context, transactionDb.getPrefixReadOptions()),
+                    transactionDb.getOptimisticTransactionDB())) {
 
-            boolean shouldVisitNext = true;
+              boolean shouldVisitNext = true;
+              final StopWatch forSeekStopWatch = StopWatch.create();
+              int i = 0;
+              try {
+                forSeekStopWatch.start();
+                for (iterator.seek(columnFamilyContext.keyWithColumnFamily(seekTarget));
+                    iterator.isValid() && shouldVisitNext;
+                    iterator.next()) {
+                  i++;
+                  final StopWatch keyStopWatch = new StopWatch();
+                  final byte[] keyBytes;
+                  try {
+                    keyStopWatch.start();
+                    keyBytes = iterator.parent.key();
+                  } finally {
+                    keyStopWatch.stop();
+                    final long keyStopWatchTime = keyStopWatch.getTime(TimeUnit.MILLISECONDS);
+                    if (keyStopWatchTime > 1) {
+                      LOGGER.info("KeyStopWatch: {}ms", keyStopWatchTime);
+                    }
+                  }
+                  if (!startsWith(prefixKey, 0, prefixLength, keyBytes, 0, keyBytes.length)) {
+                    break;
+                  }
 
-            for (iterator.seek(columnFamilyContext.keyWithColumnFamily(seekTarget));
-                iterator.isValid() && shouldVisitNext;
-                iterator.next()) {
-              final byte[] keyBytes = iterator.key();
-              if (!startsWith(prefixKey, 0, prefixLength, keyBytes, 0, keyBytes.length)) {
-                break;
+                  final StopWatch visitStopWatch = new StopWatch();
+                  try{
+                    visitStopWatch.start();
+                    shouldVisitNext = visit(keyInstance, valueInstance, visitor, iterator.parent);
+                  } finally{
+                    visitStopWatch.stop();
+                    final long visitTime = visitStopWatch.getTime(TimeUnit.MILLISECONDS);
+                    if (visitTime > 1) {
+                      LOGGER.info("Visit Took: {}ms. KeyInstance: {}, ValueInstance: {}, Visitor: {}, iterator: {}", visitTime, keyInstance, valueInstance, visitor, iterator.parent);
+                    }
+                  }
+                }
+              } finally {
+                forSeekStopWatch.stop();
               }
-
-              shouldVisitNext = visit(keyInstance, valueInstance, visitor, iterator);
+              final long forSeekTimeInMs = forSeekStopWatch.getTime(TimeUnit.MILLISECONDS);
+              if (forSeekTimeInMs > 10) {
+                LOGGER.info("For loop time: {}ms", forSeekTimeInMs);
+                LOGGER.info("Loop count is: {}", i);
+              }
             }
-          }
-        });
+          });
+    } finally {
+      stopWatch.stop();
+    }
+    final long timeInMs = stopWatch.getTime(TimeUnit.MILLISECONDS);
+    if (timeInMs >= 10) {
+      LOGGER.info(
+          "forEachInPrefix took more than 10ms: {}ms. startAt: {}, prefix: {}, visitor: {}",
+          timeInMs,
+          startAt,
+          prefix,
+          visitor);
+    } else {
+      LOGGER.trace(
+          "forEachInPrefix usual time: {} microseconds", stopWatch.getTime(TimeUnit.MICROSECONDS));
+    }
   }
 
   /**
@@ -452,5 +518,147 @@ class TransactionalColumnFamily<
     valueInstance.wrap(valueViewBuffer, 0, valueViewBuffer.capacity());
 
     return iteratorConsumer.visit(keyInstance, valueInstance);
+  }
+
+  public static final class RocksdbMeasuredIteratorWrapper
+      implements RocksIteratorInterface, AutoCloseable {
+
+    private static final Logger LOGGER =
+        LoggerFactory.getLogger(RocksdbMeasuredIteratorWrapper.class);
+
+    private final RocksIterator parent;
+    private final RocksDB rocksDB;
+
+    public RocksIterator getParent() {
+      return parent;
+    }
+
+    public RocksdbMeasuredIteratorWrapper(final RocksIterator parent, RocksDB rocksDB) {
+      this.parent = parent;
+      this.rocksDB = rocksDB;
+    }
+
+    @Override
+    public boolean isValid() {
+      final StopWatch validWatch = StopWatch.create();
+      final PerfContext perfContext = rocksDB.getPerfContext();
+      try {
+        rocksDB.setPerfLevel(PerfLevel.ENABLE_TIME_AND_CPU_TIME_EXCEPT_FOR_MUTEX);
+        perfContext.reset();
+        validWatch.start();
+        return parent.isValid();
+      } finally {
+        validWatch.stop();
+        rocksDB.setPerfLevel(PerfLevel.DISABLE);
+        final long validTimeInMs = validWatch.getTime(TimeUnit.MILLISECONDS);
+        if (validTimeInMs > 1) {
+          LOGGER.info("Valid was: {}ms", validTimeInMs);
+        }
+      }
+    }
+
+    @Override
+    public void seekToFirst() {
+      parent.seekToFirst();
+    }
+
+    @Override
+    public void seekToLast() {
+      parent.seekToLast();
+    }
+
+    @Override
+    public void seek(final byte[] target) {
+      parent.seek(target);
+    }
+
+    @Override
+    public void seekForPrev(final byte[] target) {
+      parent.seekForPrev(target);
+    }
+
+    @Override
+    public void seek(final ByteBuffer target) {
+      final StopWatch seekWatch = StopWatch.create();
+      final PerfContext perfContext = rocksDB.getPerfContext();
+      try {
+        rocksDB.setPerfLevel(PerfLevel.ENABLE_TIME_AND_CPU_TIME_EXCEPT_FOR_MUTEX);
+        perfContext.reset();
+        seekWatch.start();
+        parent.seek(target);
+      } finally {
+        seekWatch.stop();
+        rocksDB.setPerfLevel(PerfLevel.DISABLE);
+      }
+      final long seekTimeInMs = seekWatch.getTime(TimeUnit.MILLISECONDS);
+      if (seekTimeInMs > 1) {
+        LOGGER.info("Seek was: {}ms", seekTimeInMs);
+        LOGGER.info(
+            "Seek Rocksdb perf context. SeekChildSeekCount: {}",
+            perfContext.getSeekChildSeekCount());
+        LOGGER.info(
+            "Seek Rocksdb perf context. SeekChildSeekTime: {}", perfContext.getSeekChildSeekTime());
+        LOGGER.info(
+            "Seek Rocksdb perf context. Number Async Seek: {}", perfContext.getNumberAsyncSeek());
+        LOGGER.info(
+            "Seek Rocksdb perf context. IterSeekCpuNanos: {}", perfContext.getIterSeekCpuNanos());
+        LOGGER.info(
+            "Seek Rocksdb perf context. KeyLockWaitTime: {}", perfContext.getKeyLockWaitTime());
+        LOGGER.info(
+            "Seek Rocksdb perf context. KeyLockWaitCount: {}", perfContext.getKeyLockWaitCount());
+      }
+    }
+
+    @Override
+    public void seekForPrev(final ByteBuffer target) {
+      parent.seekForPrev(target);
+    }
+
+    @Override
+    public void next() {
+      final StopWatch nextStopWatch = new StopWatch();
+      final PerfContext perfContext = rocksDB.getPerfContext();
+      try {
+        rocksDB.setPerfLevel(PerfLevel.ENABLE_TIME_AND_CPU_TIME_EXCEPT_FOR_MUTEX);
+        perfContext.reset();
+        nextStopWatch.start();
+        parent.next();
+      } finally {
+        nextStopWatch.stop();
+        rocksDB.setPerfLevel(PerfLevel.DISABLE);
+      }
+      final long nextTimeInMs = nextStopWatch.getTime(TimeUnit.MILLISECONDS);
+      if (nextTimeInMs > 1) {
+        LOGGER.info("Next was: {}ms", nextTimeInMs);
+        LOGGER.info(
+            "Next Rocksdb perf context. NextOnMemtableCount: {}",
+            perfContext.getNextOnMemtableCount());
+      }
+    }
+
+    @Override
+    public void prev() {
+      parent.prev();
+    }
+
+    @Override
+    public void status() throws RocksDBException {
+      parent.status();
+    }
+
+    @Override
+    public void refresh() throws RocksDBException {
+      parent.refresh();
+    }
+
+    @Override
+    public void refresh(final Snapshot snapshot) throws RocksDBException {
+      parent.refresh(snapshot);
+    }
+
+    @Override
+    public void close() {
+      parent.close();
+    }
   }
 }

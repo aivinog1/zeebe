@@ -39,13 +39,9 @@ import org.rocksdb.SstPartitionerFixedPrefixFactory;
 import org.rocksdb.Statistics;
 import org.rocksdb.StatsLevel;
 import org.rocksdb.TableFormatConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class ZeebeRocksDbFactory<ColumnFamilyType extends Enum<ColumnFamilyType>>
     implements ZeebeDbFactory<ColumnFamilyType> {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(ZeebeRocksDbFactory.class);
 
   static {
     RocksDB.loadLibrary();

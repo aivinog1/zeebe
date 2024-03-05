@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  ~ Copyright Camunda Services GmbH and/or licensed to Camunda Services GmbH under
-  ~ one or more contributor license agreements. See the NOTICE file distributed
-  ~ with this work for additional information regarding copyright ownership.
-  ~ Licensed under the Zeebe Community License 1.1. You may not use this file
-  ~ except in compliance with the Zeebe Community License 1.1.
-  -->
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1qwgz3r" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.20.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.4.0">
   <bpmn:process id="process-large-timers-messages" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1">
@@ -27,23 +20,18 @@
       </bpmn:timerEventDefinition>
     </bpmn:boundaryEvent>
     <bpmn:sequenceFlow id="Flow_0fycyli" sourceRef="Event_17qty1k" targetRef="Event_0gadyi4" />
-    <bpmn:intermediateThrowEvent id="Event_0gadyi4">
+    <bpmn:endEvent id="Event_0gadyi4">
       <bpmn:incoming>Flow_0fycyli</bpmn:incoming>
-      <bpmn:linkEventDefinition id="LinkEventDefinition_1g31fms" name="process-large-timers-link-event" />
-    </bpmn:intermediateThrowEvent>
-    <bpmn:intermediateCatchEvent id="Event_0992ak6">
-      <bpmn:outgoing>Flow_1jzgtlo</bpmn:outgoing>
-      <bpmn:linkEventDefinition id="LinkEventDefinition_1xycvyr" name="process-large-timers-link-event" />
-    </bpmn:intermediateCatchEvent>
-    <bpmn:endEvent id="Event_0684ejt">
-      <bpmn:incoming>Flow_1jzgtlo</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:sequenceFlow id="Flow_1jzgtlo" sourceRef="Event_0992ak6" targetRef="Event_0684ejt" />
-    <bpmn:group id="Group_1neroab" />
   </bpmn:process>
   <bpmn:message id="Message_1q97c4a" name="message-process-large-timers-message">
     <bpmn:extensionElements>
       <zeebe:subscription correlationKey="=&#34;process-large-messages-correlation-key&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_25mkoqf" name="timeouted-message">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=&#34;timeouted-message&#34;" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
@@ -57,14 +45,8 @@
       <bpmndi:BPMNShape id="Event_1b31ptx_di" bpmnElement="Event_1b31ptx">
         <dc:Bounds x="432" y="99" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0mn1p6g_di" bpmnElement="Event_0gadyi4">
+      <bpmndi:BPMNShape id="Event_1lrpcvv_di" bpmnElement="Event_0gadyi4">
         <dc:Bounds x="392" y="222" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0l9s0hw_di" bpmnElement="Event_0992ak6">
-        <dc:Bounds x="192" y="422" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_0684ejt_di" bpmnElement="Event_0684ejt">
-        <dc:Bounds x="282" y="422" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1409kxt_di" bpmnElement="Event_17qty1k">
         <dc:Bounds x="302" y="139" width="36" height="36" />
@@ -82,13 +64,6 @@
         <di:waypoint x="320" y="240" />
         <di:waypoint x="392" y="240" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_1jzgtlo_di" bpmnElement="Flow_1jzgtlo">
-        <di:waypoint x="228" y="440" />
-        <di:waypoint x="282" y="440" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNShape id="Group_1neroab_di" bpmnElement="Group_1neroab">
-        <dc:Bounds x="170" y="310" width="300" height="300" />
-      </bpmndi:BPMNShape>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>
