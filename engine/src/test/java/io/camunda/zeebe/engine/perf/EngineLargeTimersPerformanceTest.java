@@ -7,10 +7,13 @@
  */
 package io.camunda.zeebe.engine.perf;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+
 import io.camunda.zeebe.engine.perf.TestEngine.TestContext;
 import io.camunda.zeebe.engine.util.client.ProcessInstanceClient;
 import io.camunda.zeebe.protocol.record.Record;
 import io.camunda.zeebe.protocol.record.intent.MessageSubscriptionIntent;
+import io.camunda.zeebe.protocol.record.intent.TimerIntent;
 import io.camunda.zeebe.protocol.record.value.MessageSubscriptionRecordValue;
 import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.scheduler.clock.DefaultActorClock;
@@ -19,11 +22,14 @@ import io.camunda.zeebe.test.util.jmh.JMHTestCase;
 import io.camunda.zeebe.test.util.junit.JMHTest;
 import io.camunda.zeebe.test.util.record.RecordingExporter;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.assertj.core.api.Assertions;
 import org.junit.rules.TemporaryFolder;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -48,8 +54,7 @@ import org.slf4j.LoggerFactory;
       "-XX:+UnlockDiagnosticVMOptions",
       "-XX:+DebugNonSafepoints",
       "-XX:+AlwaysPreTouch",
-      "-XX:+UseShenandoahGC",
-      "-Xlog:gc*=debug:file=gc.log"
+      "-XX:+UseShenandoahGC"
     })
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -64,6 +69,7 @@ public class EngineLargeTimersPerformanceTest {
   private ProcessInstanceClient processInstanceClient;
   private TestEngine.TestContext testContext;
   private TestEngine singlePartitionEngine;
+  private TemporaryFolder temporaryFolder;
 
   @Setup
   public void setup() throws Throwable {
@@ -95,7 +101,7 @@ public class EngineLargeTimersPerformanceTest {
 
     processInstanceClient = singlePartitionEngine.createProcessInstanceClient();
 
-    final int maxInstanceCount = 0;
+    final int maxInstanceCount = 200_000;
     LOG.info("Starting {} process instances, please hold the line...", maxInstanceCount);
     for (int i = 0; i < maxInstanceCount; i++) {
       processInstanceClient
@@ -116,7 +122,7 @@ public class EngineLargeTimersPerformanceTest {
 
   private TestEngine.TestContext createTestContext() throws IOException {
     final var autoCloseableRule = new AutoCloseableRule();
-    final var temporaryFolder = new TemporaryFolder();
+    temporaryFolder = new TemporaryFolder();
     temporaryFolder.create();
     LOG.info("Temporary folder for this run: {}", temporaryFolder.getRoot());
 
@@ -134,8 +140,15 @@ public class EngineLargeTimersPerformanceTest {
   }
 
   @TearDown
-  public void tearDown() {
+  public void tearDown() throws IOException {
     LOG.info("Started {} process instances", count);
+    final File rocksdbLog = new File(temporaryFolder.getRoot(), "stream-1/state/runtime/LOG");
+    final File rocksdbLogDest = new File("ROCKSDBLOG");
+    Files.copy(rocksdbLog.toPath(), rocksdbLogDest.toPath(), REPLACE_EXISTING);
+    final File optionsFile =
+        new File(temporaryFolder.getRoot(), "stream-1/state/runtime/OPTIONS-000007");
+    final File optionsDestFile = new File("OPTIONS");
+    Files.copy(optionsFile.toPath(), optionsDestFile.toPath(), REPLACE_EXISTING);
     testContext.autoCloseableRule().after();
   }
 
@@ -163,12 +176,25 @@ public class EngineLargeTimersPerformanceTest {
   void shouldProcessWithinExpectedDeviation(final JMHTestCase testCase) {
     // given - an expected ops/s score, as measured in CI
     // when running this test locally, you're likely to have a different score
-    final var referenceScore = 1000;
+    final var referenceScore = 750;
 
     // when
     final var assertResult = testCase.run();
 
     // then
+    final long createdTimerRecordsCount =
+        RecordingExporter.timerRecords(TimerIntent.CREATED).count();
+    final long triggeredTimerRecordsCount =
+        RecordingExporter.timerRecords(TimerIntent.TRIGGERED).count();
+    final long createdMessagesCount =
+        RecordingExporter.messageSubscriptionRecords()
+            .withIntent(MessageSubscriptionIntent.CREATED)
+            .withMessageName("message-process-large-timers-message")
+            .count();
+    Assertions.assertThat(createdTimerRecordsCount)
+        .isEqualTo(triggeredTimerRecordsCount)
+        .isEqualTo(createdMessagesCount)
+        .isEqualTo(count);
     assertResult
         .isMinimumScoreAtLeast((double) referenceScore / 2, 0.25)
         .isAtLeast(referenceScore, 0.25);

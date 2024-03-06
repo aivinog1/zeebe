@@ -7,6 +7,8 @@
  */
 package io.camunda.zeebe.engine.perf;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+
 import io.camunda.zeebe.engine.perf.TestEngine.TestContext;
 import io.camunda.zeebe.engine.util.client.ProcessInstanceClient;
 import io.camunda.zeebe.model.bpmn.Bpmn;
@@ -19,7 +21,9 @@ import io.camunda.zeebe.test.util.AutoCloseableRule;
 import io.camunda.zeebe.test.util.jmh.JMHTestCase;
 import io.camunda.zeebe.test.util.junit.JMHTest;
 import io.camunda.zeebe.test.util.record.RecordingExporter;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.concurrent.TimeUnit;
 import org.junit.rules.TemporaryFolder;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -46,7 +50,6 @@ import org.slf4j.LoggerFactory;
       "-XX:+DebugNonSafepoints",
       "-XX:+AlwaysPreTouch",
       "-XX:+UseShenandoahGC",
-      "-Xlog:gc*=debug:file=gc.log"
     })
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -59,6 +62,7 @@ public class EngineLargeStatePerformanceTest {
   private ProcessInstanceClient processInstanceClient;
   private TestEngine.TestContext testContext;
   private TestEngine singlePartitionEngine;
+  private TemporaryFolder temporaryFolder;
 
   @Setup
   public void setup() throws Throwable {
@@ -101,7 +105,7 @@ public class EngineLargeStatePerformanceTest {
 
   private TestEngine.TestContext createTestContext() throws IOException {
     final var autoCloseableRule = new AutoCloseableRule();
-    final var temporaryFolder = new TemporaryFolder();
+    temporaryFolder = new TemporaryFolder();
     temporaryFolder.create();
 
     // scheduler
@@ -118,8 +122,15 @@ public class EngineLargeStatePerformanceTest {
   }
 
   @TearDown
-  public void tearDown() {
+  public void tearDown() throws IOException {
     LOG.info("Started {} process instances", count);
+    final File rocksdbLog = new File(temporaryFolder.getRoot(), "stream-1/state/runtime/LOG");
+    final File rocksdbLogDest = new File("ROCKSDBLOG");
+    Files.copy(rocksdbLog.toPath(), rocksdbLogDest.toPath(), REPLACE_EXISTING);
+    final File optionsFile =
+        new File(temporaryFolder.getRoot(), "stream-1/state/runtime/OPTIONS-000007");
+    final File optionsDestFile = new File("OPTIONS");
+    Files.copy(optionsFile.toPath(), optionsDestFile.toPath(), REPLACE_EXISTING);
     testContext.autoCloseableRule().after();
   }
 
