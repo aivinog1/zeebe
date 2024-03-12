@@ -19,8 +19,6 @@ import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.platform.commons.util.ReflectionUtils;
 import org.openjdk.jmh.profile.AsyncProfiler;
-import org.openjdk.jmh.profile.GCProfiler;
-import org.openjdk.jmh.profile.PausesProfiler;
 import org.openjdk.jmh.results.format.ResultFormatType;
 
 /**

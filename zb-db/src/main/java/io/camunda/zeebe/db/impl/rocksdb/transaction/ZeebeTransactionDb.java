@@ -7,6 +7,8 @@
  */
 package io.camunda.zeebe.db.impl.rocksdb.transaction;
 
+import static org.rocksdb.TablePropertiesCollectorFactory.NewCompactOnDeletionCollectorFactory;
+
 import io.camunda.zeebe.db.ColumnFamily;
 import io.camunda.zeebe.db.ConsistencyChecksSettings;
 import io.camunda.zeebe.db.DbKey;
@@ -18,6 +20,7 @@ import io.camunda.zeebe.db.impl.DbNil;
 import io.camunda.zeebe.db.impl.rocksdb.Loggers;
 import io.camunda.zeebe.db.impl.rocksdb.RocksDbConfiguration;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,11 +29,14 @@ import java.util.Optional;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
+import org.rocksdb.Env;
 import org.rocksdb.OptimisticTransactionDB;
+import org.rocksdb.Options;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksObject;
+import org.rocksdb.TablePropertiesCollectorFactory;
 import org.rocksdb.Transaction;
 import org.rocksdb.WriteOptions;
 import org.slf4j.Logger;
@@ -43,11 +49,8 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
       "Expected to close RocksDB resource successfully, but exception was thrown. Will continue to close remaining resources.";
   private final OptimisticTransactionDB optimisticTransactionDB;
 
-  public OptimisticTransactionDB getOptimisticTransactionDB() {
-    return optimisticTransactionDB;
-  }
-
   private final List<AutoCloseable> closables;
+
   private final ReadOptions prefixReadOptions;
   private final ReadOptions defaultReadOptions;
   private final WriteOptions defaultWriteOptions;
@@ -83,6 +86,10 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
     closables.add(defaultWriteOptions);
   }
 
+  public OptimisticTransactionDB getOptimisticTransactionDB() {
+    return optimisticTransactionDB;
+  }
+
   public static <ColumnFamilyNames extends Enum<ColumnFamilyNames>>
       ZeebeTransactionDb<ColumnFamilyNames> openTransactionalDb(
           final RocksDbOptions options,
@@ -91,25 +98,44 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
           final RocksDbConfiguration rocksDbConfiguration,
           final ConsistencyChecksSettings consistencyChecksSettings)
           throws RocksDBException {
-    final var cfDescriptors =
-        Arrays.asList( // todo: could consider using List.of
-            new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, options.cfOptions()));
-    final List<ColumnFamilyHandle> cfHandles = new ArrayList<>();
+    final ColumnFamilyDescriptor defaultColumnFamilyDescriptor = new ColumnFamilyDescriptor(
+        "ZeebeColumnFamily".getBytes(StandardCharsets.UTF_8), options.cfOptions());
+//    final var cfDescriptors =
+//            Arrays.asList( // todo: could consider using List.of
+//                defaultColumnFamilyDescriptor);
+    //    final List<ColumnFamilyHandle> cfHandles = new ArrayList<>();
+    final TablePropertiesCollectorFactory tablePropertiesCollectorFactory = NewCompactOnDeletionCollectorFactory(20000,
+        200,
+        0.1);
+    final Options innerOptions = new Options(options.dbOptions(), options.cfOptions())
+        .setCreateIfMissing(true)
+        .setCreateMissingColumnFamilies(false)
+        .setMaxBackgroundJobs(4)
+        .setEnv(Env.getDefault().setBackgroundThreads(4));
+    innerOptions.setTablePropertiesCollectorFactory(List.of(tablePropertiesCollectorFactory));
     final OptimisticTransactionDB optimisticTransactionDB =
-        OptimisticTransactionDB.open(options.dbOptions(), path, cfDescriptors, cfHandles);
+        OptimisticTransactionDB.open(innerOptions, path);
+    //    final OptimisticTransactionDB optimisticTransactionDB =
+    //        OptimisticTransactionDB.open(options.dbOptions(), path, cfDescriptors, cfHandles);
+    final ColumnFamilyHandle zeebeColumnFamilyHandle = optimisticTransactionDB.createColumnFamily(
+        defaultColumnFamilyDescriptor);
+    closables.add(zeebeColumnFamilyHandle);
+    closables.add(innerOptions);
+    closables.add(tablePropertiesCollectorFactory);
     closables.add(optimisticTransactionDB);
 
-    if (cfHandles.size() != 1) {
-      throw new IllegalStateException(
-          "Expected a handle for the default column family but found %d handles"
-              .formatted(cfHandles.size()));
-    }
+    //    if (cfHandles.size() != 1) {
+    //      throw new IllegalStateException(
+    //          "Expected a handle for the default column family but found %d handles"
+    //              .formatted(cfHandles.size()));
+    //    }
 
-    final ColumnFamilyHandle defaultColumnFamilyHandle = cfHandles.getFirst();
-    closables.add(defaultColumnFamilyHandle);
+    //    final ColumnFamilyHandle defaultColumnFamilyHandle = cfHandles.getFirst();
+
+    closables.add(zeebeColumnFamilyHandle);
 
     return new ZeebeTransactionDb<>(
-        defaultColumnFamilyHandle,
+        zeebeColumnFamilyHandle,
         optimisticTransactionDB,
         closables,
         rocksDbConfiguration,
@@ -178,7 +204,7 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
   @Override
   public TransactionContext createContext() {
     final Transaction transaction = optimisticTransactionDB.beginTransaction(defaultWriteOptions);
-    final ZeebeTransaction zeebeTransaction = new ZeebeTransaction(transaction, this);
+    final ZeebeTransaction zeebeTransaction = new ZeebeTransaction(transaction, this, optimisticTransactionDB);
     closables.add(zeebeTransaction);
     return new DefaultTransactionContext(zeebeTransaction);
   }

@@ -57,6 +57,7 @@ class TransactionalColumnFamily<
     implements ColumnFamily<KeyType, ValueType> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TransactionalColumnFamily.class);
+  //  public static final int COMPACTION_COUNTER = 7500;
 
   private final ZeebeTransactionDb<ColumnFamilyNames> transactionDb;
   private final ConsistencyChecksSettings consistencyChecksSettings;
@@ -220,6 +221,7 @@ class TransactionalColumnFamily<
 
   @Override
   public void deleteExisting(final KeyType key) {
+    //    deleteCounter++;
     ensureInOpenTransaction(
         transaction -> {
           columnFamilyContext.writeKey(key);
@@ -229,10 +231,14 @@ class TransactionalColumnFamily<
               columnFamilyContext.getKeyBufferArray(),
               columnFamilyContext.getKeyLength());
         });
+    //    if (deleteCounter % COMPACTION_COUNTER == 0) {
+    //      compact();
+    //    }
   }
 
   @Override
   public void deleteIfExists(final KeyType key) {
+    //    deleteCounter++;
     ensureInOpenTransaction(
         transaction -> {
           columnFamilyContext.writeKey(key);
@@ -241,6 +247,9 @@ class TransactionalColumnFamily<
               columnFamilyContext.getKeyBufferArray(),
               columnFamilyContext.getKeyLength());
         });
+    //    if (deleteCounter % COMPACTION_COUNTER == 0) {
+    //      compact();
+    //    }
   }
 
   @Override
@@ -282,6 +291,15 @@ class TransactionalColumnFamily<
   @Override
   public long countEqualPrefix(final DbKey prefix) {
     return countEachInPrefix(prefix);
+  }
+
+  @Override
+  public void compact() {
+    try {
+      transactionDb.getOptimisticTransactionDB().compactRange(transactionDb.getDefaultHandle());
+    } catch (RocksDBException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private void assertForeignKeysExist(final ZeebeTransaction transaction, final Object... keys)
@@ -364,6 +382,7 @@ class TransactionalColumnFamily<
    * @param visitor called for all kv pairs where the key matches the given prefix. The visitor can
    *     indicate whether iteration should continue or not, see {@link KeyValuePairVisitor}.
    */
+  @SuppressWarnings("NestedTryDepth")
   private void forEachInPrefix(
       final DbKey startAt,
       final DbKey prefix,
@@ -418,14 +437,20 @@ class TransactionalColumnFamily<
                   }
 
                   final StopWatch visitStopWatch = new StopWatch();
-                  try{
+                  try {
                     visitStopWatch.start();
                     shouldVisitNext = visit(keyInstance, valueInstance, visitor, iterator.parent);
-                  } finally{
+                  } finally {
                     visitStopWatch.stop();
                     final long visitTime = visitStopWatch.getTime(TimeUnit.MILLISECONDS);
                     if (visitTime > 1) {
-                      LOGGER.info("Visit Took: {}ms. KeyInstance: {}, ValueInstance: {}, Visitor: {}, iterator: {}", visitTime, keyInstance, valueInstance, visitor, iterator.parent);
+                      LOGGER.info(
+                          "Visit Took: {}ms. KeyInstance: {}, ValueInstance: {}, Visitor: {}, iterator: {}",
+                          visitTime,
+                          keyInstance,
+                          valueInstance,
+                          visitor,
+                          iterator.parent);
                     }
                   }
                 }
@@ -529,13 +554,13 @@ class TransactionalColumnFamily<
     private final RocksIterator parent;
     private final RocksDB rocksDB;
 
-    public RocksIterator getParent() {
-      return parent;
-    }
-
     public RocksdbMeasuredIteratorWrapper(final RocksIterator parent, RocksDB rocksDB) {
       this.parent = parent;
       this.rocksDB = rocksDB;
+    }
+
+    public RocksIterator getParent() {
+      return parent;
     }
 
     @Override
@@ -606,6 +631,12 @@ class TransactionalColumnFamily<
             "Seek Rocksdb perf context. KeyLockWaitTime: {}", perfContext.getKeyLockWaitTime());
         LOGGER.info(
             "Seek Rocksdb perf context. KeyLockWaitCount: {}", perfContext.getKeyLockWaitCount());
+        LOGGER.info(
+            "Seek Rocksdb perf context. GetInternalDeleteSkippedCount: {}",
+            perfContext.getInternalDeleteSkippedCount());
+        LOGGER.info(
+            "Seek Rocksdb perf context. FindNextUserEntryTime: {}",
+            perfContext.getFindNextUserEntryTime());
       }
     }
 

@@ -17,8 +17,12 @@ public final class DefaultZeebeDbFactory {
 
   public static ZeebeDbFactory<ZbColumnFamilies> defaultFactory() {
     // enable consistency checks for tests
-    final var consistencyChecks = new ConsistencyChecksSettings(true, true);
+    final var consistencyChecks = new ConsistencyChecksSettings(false, false);
     return new ZeebeRocksDbFactory<>(
-        new RocksDbConfiguration().setStatisticsEnabled(true), consistencyChecks);
+        new RocksDbConfiguration()
+            .setMemoryLimit(RocksDbConfiguration.DEFAULT_MEMORY_LIMIT * 2)
+            .setStatisticsEnabled(true)
+//            .setIoRateBytesPerSecond(5 * 1000 * 1024)
+        , consistencyChecks);
   }
 }

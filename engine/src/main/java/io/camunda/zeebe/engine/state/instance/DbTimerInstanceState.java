@@ -102,7 +102,18 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
 
             boolean consumed = false;
             if (dueDate <= timestamp) {
-              final var timerInstance = timerInstanceColumnFamily.get(elementAndTimerKey);
+              final StopWatch timerInstanceGet = StopWatch.create();
+              final TimerInstance timerInstance;
+              try {
+                timerInstanceGet.start();
+                timerInstance = timerInstanceColumnFamily.get(elementAndTimerKey);
+              } finally {
+                timerInstanceGet.stop();
+                final long getTime = timerInstanceGet.getTime(TimeUnit.MILLISECONDS);
+                if (getTime >= 1) {
+                  LOGGER.info("timerInstanceColumnFamily.get took {}ms", getTime);
+                }
+              }
               if (timerInstance == null) {
                 // Time for due date no longer exists. This can occur due to the following data
                 // race:
@@ -112,7 +123,17 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
                 // Because timer and due date were already removed, we can ignore this here.
                 return true;
               }
-              consumed = consumer.visit(timerInstance);
+              final StopWatch consumerVisitorWatch = new StopWatch();
+              try {
+                consumerVisitorWatch.start();
+                consumed = consumer.visit(timerInstance);
+              } finally {
+                consumerVisitorWatch.stop();
+                final long consumerVisitorWatchTime = consumerVisitorWatch.getTime(TimeUnit.MILLISECONDS);
+                if (consumerVisitorWatchTime > 1) {
+                  LOGGER.info("consumer.visit with consumer: {} took {}", consumer, consumerVisitorWatchTime);
+                }
+              }
             }
 
             if (!consumed) {
@@ -125,7 +146,11 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
     }
     final long elapsedTimeInMs = stopWatch.getTime(TimeUnit.MILLISECONDS);
     if (elapsedTimeInMs >= 10) {
-      LOGGER.info("processTimersWithDueDateBefore >= 10ms: {}ms. timestamp: {}, timerVisitor: {}", elapsedTimeInMs, timestamp, consumer);
+      LOGGER.info(
+          "processTimersWithDueDateBefore >= 10ms: {}ms. timestamp: {}, timerVisitor: {}",
+          elapsedTimeInMs,
+          timestamp,
+          consumer);
     }
 
     return nextDueDate;

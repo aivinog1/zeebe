@@ -12,23 +12,35 @@ import static io.camunda.zeebe.db.impl.rocksdb.transaction.RocksDbInternal.isRoc
 import io.camunda.zeebe.db.TransactionOperation;
 import io.camunda.zeebe.db.ZeebeDbException;
 import io.camunda.zeebe.db.ZeebeDbTransaction;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 import org.agrona.LangUtil;
 import org.rocksdb.ColumnFamilyHandle;
+import org.rocksdb.OptimisticTransactionDB;
+import org.rocksdb.PerfContext;
+import org.rocksdb.PerfLevel;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
 import org.rocksdb.Transaction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.util.StopWatch;
 
 public class ZeebeTransaction implements ZeebeDbTransaction, AutoCloseable {
+  private static final Logger LOGGER = LoggerFactory.getLogger(ZeebeTransaction.class);
 
   private final long nativeHandle;
   private final TransactionRenovator transactionRenovator;
 
   private boolean inCurrentTransaction;
   private Transaction transaction;
+  private final OptimisticTransactionDB optimisticTransactionDB;
 
   public ZeebeTransaction(
-      final Transaction transaction, final TransactionRenovator transactionRenovator) {
+      final Transaction transaction, final TransactionRenovator transactionRenovator, final
+      OptimisticTransactionDB optimisticTransactionDB) {
+    this.optimisticTransactionDB = optimisticTransactionDB;
     this.transactionRenovator = transactionRenovator;
     this.transaction = transaction;
     try {
@@ -70,20 +82,40 @@ public class ZeebeTransaction implements ZeebeDbTransaction, AutoCloseable {
       final byte[] key,
       final int keyLength)
       throws Exception {
+    final StopWatch getStopWatch = new StopWatch();
+    final PerfContext perfContext = optimisticTransactionDB.getPerfContext();
     try {
       final int keyOffset = 0;
-      return (byte[])
-          RocksDbInternal.getWithHandle.invokeExact(
-              transaction,
-              nativeHandle,
-              readOptionsHandle,
-              key,
-              keyOffset,
-              keyLength,
-              columnFamilyHandle);
+      getStopWatch.start();
+      optimisticTransactionDB.setPerfLevel(PerfLevel.ENABLE_TIME_AND_CPU_TIME_EXCEPT_FOR_MUTEX);
+      perfContext.reset();
+      final byte[] getResult =
+          (byte[])
+              RocksDbInternal.getWithHandle.invokeExact(
+                  transaction,
+                  nativeHandle,
+                  readOptionsHandle,
+                  key,
+                  keyOffset,
+                  keyLength,
+                  columnFamilyHandle);
+      getStopWatch.stop();
+      return getResult;
     } catch (final Throwable e) {
       LangUtil.rethrowUnchecked(e);
       return null; // unreachable
+    } finally {
+      if (getStopWatch.isRunning()) {
+        getStopWatch.stop();
+      }
+      optimisticTransactionDB.setPerfLevel(PerfLevel.DISABLE);
+      final double getStopWatchTotalTime = getStopWatch.getTotalTime(TimeUnit.MILLISECONDS);
+      if (getStopWatchTotalTime > 1) {
+        LOGGER.info("Get time: {}ms", getStopWatchTotalTime);
+        LOGGER.info("Get transaction. GetFromMemtableTime: {}", perfContext.getFromMemtableTime());
+        LOGGER.info("Get transaction. GetFromOutputFilesTime: {}", perfContext.getFromOutputFilesTime());
+        LOGGER.info("Get transaction. SeekOnMemtableTime: {}", perfContext.getSeekOnMemtableTime());
+      }
     }
   }
 

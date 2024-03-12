@@ -57,7 +57,8 @@ import org.slf4j.LoggerFactory;
       "-XX:+UnlockDiagnosticVMOptions",
       "-XX:+DebugNonSafepoints",
       "-XX:+AlwaysPreTouch",
-      "-XX:+UseShenandoahGC",
+      "-XX:+UseParallelGC"
+//      "-XX:+UseShenandoahGC",
       //      "-XX:+UseZGC",
       //      "-XX:+ZGenerational",
       //      "-Xlog:gc*=debug:file=gc.log",
