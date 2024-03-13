@@ -21,15 +21,18 @@ import org.agrona.ExpandableArrayBuffer;
  * Similar to {@link TransactionalColumnFamily} but supports lookups on arbitrary column families.
  * Can be used to check that a foreign key is valid.
  */
-public final class ForeignKeyChecker {
+public final class ForeignKeyChecker<ColumnFamilyNames extends Enum<ColumnFamilyNames>> {
   private final ZeebeTransactionDb<?> transactionDb;
   private final ExpandableArrayBuffer keyBuffer = new ExpandableArrayBuffer();
   private final boolean enabled;
+  private final ColumnFamilyNames columnFamily;
 
   public ForeignKeyChecker(
-      final ZeebeTransactionDb<?> transactionDb, final ConsistencyChecksSettings settings) {
+      final ZeebeTransactionDb<?> transactionDb, final ConsistencyChecksSettings settings,
+      ColumnFamilyNames columnFamily) {
     this.transactionDb = transactionDb;
     enabled = settings.enableForeignKeyChecks();
+    this.columnFamily = columnFamily;
   }
 
   public void assertExists(
@@ -70,7 +73,7 @@ public final class ForeignKeyChecker {
       throws Exception {
     final var exists =
         transaction.get(
-                transactionDb.getDefaultNativeHandle(),
+                transactionDb.getNativeHandle(columnFamily.name()),
                 transactionDb.getReadOptionsNativeHandle(),
                 key,
                 keyLength)
@@ -88,7 +91,7 @@ public final class ForeignKeyChecker {
       final int prefixLength) {
     try (final var iterator =
         transaction.newIterator(
-            transactionDb.getPrefixReadOptions(), transactionDb.getDefaultHandle())) {
+            transactionDb.getPrefixReadOptions(), transactionDb.getHandle(columnFamily.name()))) {
 
       final ByteBuffer bufferView = ByteBuffer.wrap(prefix, 0, prefixLength);
       iterator.seek(bufferView);

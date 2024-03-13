@@ -12,17 +12,27 @@ import io.camunda.zeebe.db.ZeebeDbFactory;
 import io.camunda.zeebe.db.impl.rocksdb.RocksDbConfiguration;
 import io.camunda.zeebe.db.impl.rocksdb.ZeebeRocksDbFactory;
 import io.camunda.zeebe.protocol.ZbColumnFamilies;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 
 public final class DefaultZeebeDbFactory {
 
   public static ZeebeDbFactory<ZbColumnFamilies> defaultFactory() {
     // enable consistency checks for tests
     final var consistencyChecks = new ConsistencyChecksSettings(false, false);
+    final Properties columnFamilyProps = new Properties();
+    try(final InputStream loadtestPropsStream = DefaultZeebeDbFactory.class.getResourceAsStream("/loadtest-timers.properties")){
+      columnFamilyProps.load(loadtestPropsStream);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     return new ZeebeRocksDbFactory<>(
         new RocksDbConfiguration()
-            .setMemoryLimit(RocksDbConfiguration.DEFAULT_MEMORY_LIMIT * 2)
+            .setMemoryLimit(RocksDbConfiguration.DEFAULT_MEMORY_LIMIT)
             .setStatisticsEnabled(true)
-//            .setIoRateBytesPerSecond(5 * 1000 * 1024)
+            .setIoRateBytesPerSecond(5 * 1024 * 1024)
+            .setColumnFamilyOptions(columnFamilyProps)
         , consistencyChecks);
   }
 }

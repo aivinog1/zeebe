@@ -47,6 +47,14 @@ final class SnapshotOnlyDb<ColumnFamilyType extends Enum<ColumnFamilyType>>
   }
 
   @Override
+  public <KeyType extends DbKey, ValueType extends DbValue> ColumnFamily<KeyType, ValueType> createColumnFamily(
+      final ColumnFamilyType columnFamily, final TransactionContext context,
+      final KeyType keyInstance, final ValueType valueInstance,
+      final boolean isSingleDeletePreferred) {
+    throw unsupported("createColumnFamily");
+  }
+
+  @Override
   public void createSnapshot(final File snapshotDir) {
     try (final var checkpoint = Checkpoint.create(db)) {
       checkpoint.createCheckpoint(snapshotDir.getAbsolutePath());

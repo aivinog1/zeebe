@@ -9,37 +9,61 @@ package io.camunda.zeebe.engine.perf;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import io.camunda.zeebe.db.TransactionContext;
+import io.camunda.zeebe.db.ZeebeDb;
+import io.camunda.zeebe.db.ZeebeDbFactory;
 import io.camunda.zeebe.engine.perf.TestEngine.TestContext;
-import io.camunda.zeebe.engine.state.message.MessageSubscription;
-import io.camunda.zeebe.engine.util.MockTypedRecord;
-import io.camunda.zeebe.engine.util.Records;
+import io.camunda.zeebe.engine.processing.timer.DueDateTimerChecker;
+import io.camunda.zeebe.engine.state.DefaultZeebeDbFactory;
+import io.camunda.zeebe.engine.state.instance.DbElementInstanceState;
+import io.camunda.zeebe.engine.state.instance.DbTimerInstanceState;
+import io.camunda.zeebe.engine.state.instance.ElementInstance;
+import io.camunda.zeebe.engine.state.instance.TimerInstance;
+import io.camunda.zeebe.engine.state.variable.DbVariableState;
 import io.camunda.zeebe.engine.util.client.ProcessInstanceClient;
-import io.camunda.zeebe.protocol.impl.record.RecordMetadata;
+import io.camunda.zeebe.engine.util.client.TimerClient;
+import io.camunda.zeebe.protocol.ZbColumnFamilies;
+import io.camunda.zeebe.protocol.impl.record.UnifiedRecordValue;
 import io.camunda.zeebe.protocol.impl.record.value.processinstance.ProcessInstanceRecord;
 import io.camunda.zeebe.protocol.record.Record;
+import io.camunda.zeebe.protocol.record.intent.Intent;
 import io.camunda.zeebe.protocol.record.intent.MessageSubscriptionIntent;
+import io.camunda.zeebe.protocol.record.intent.ProcessInstanceIntent;
+import io.camunda.zeebe.protocol.record.intent.TimerIntent;
 import io.camunda.zeebe.protocol.record.value.MessageSubscriptionRecordValue;
+import io.camunda.zeebe.protocol.record.value.TimerRecordValue;
+import io.camunda.zeebe.scheduler.Actor;
+import io.camunda.zeebe.scheduler.ActorControl;
 import io.camunda.zeebe.scheduler.ActorScheduler;
+import io.camunda.zeebe.scheduler.ActorScheduler.ActorSchedulerBuilder;
 import io.camunda.zeebe.scheduler.clock.DefaultActorClock;
+import io.camunda.zeebe.stream.api.scheduling.ProcessingScheduleService;
+import io.camunda.zeebe.stream.api.scheduling.Task;
+import io.camunda.zeebe.stream.api.scheduling.TaskResult;
+import io.camunda.zeebe.stream.api.scheduling.TaskResultBuilder;
+import io.camunda.zeebe.stream.impl.BufferedTaskResultBuilder;
+import io.camunda.zeebe.stream.impl.ExtendedProcessingScheduleServiceImpl;
+import io.camunda.zeebe.stream.impl.StreamProcessorBuilder;
+import io.camunda.zeebe.stream.impl.StreamProcessorContext;
 import io.camunda.zeebe.test.util.AutoCloseableRule;
 import io.camunda.zeebe.test.util.jmh.JMHTestCase;
 import io.camunda.zeebe.test.util.junit.JMHTest;
 import io.camunda.zeebe.test.util.record.RecordingExporter;
+import io.camunda.zeebe.util.FeatureFlags;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.CopyOption;
 import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.junit.rules.TemporaryFolder;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -59,31 +83,31 @@ import org.slf4j.LoggerFactory;
 @Fork(
     value = 1,
     jvmArgs = {
-      "-Xmx4g",
-      "-Xms4g",
-      "-XX:+UnlockDiagnosticVMOptions",
-      "-XX:+DebugNonSafepoints",
-      "-XX:+AlwaysPreTouch",
-      "-XX:+UseParallelGC"
+        "-Xmx4g",
+        "-Xms4g",
+        "-XX:+UnlockDiagnosticVMOptions",
+        "-XX:+DebugNonSafepoints",
+        "-XX:+AlwaysPreTouch",
+        "-XX:+UseParallelGC"
 //      "-XX:+UseShenandoahGC",
-      //      "-XX:+UseZGC",
-      //      "-XX:+ZGenerational",
-      //      "-Xlog:gc*=debug:file=gc.log",
-      //      "-XX:+UnlockCommercialFeatures",
-      //      "-XX:StartFlightRecording=disk=true,maxsize=10g,maxage=24h,filename=./recording.jfr",
-      //      "-XX:FlightRecorderOptions=repository=./diagnostics/,maxchunksize=50m,stackdepth=1024"
+        //      "-XX:+UseZGC",
+        //      "-XX:+ZGenerational",
+        //      "-Xlog:gc*=debug:file=gc.log",
+        //      "-XX:+UnlockCommercialFeatures",
+        //      "-XX:StartFlightRecording=disk=true,maxsize=10g,maxage=24h,filename=./recording.jfr",
+        //      "-XX:FlightRecorderOptions=repository=./diagnostics/,maxchunksize=50m,stackdepth=1024"
     })
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @State(org.openjdk.jmh.annotations.Scope.Benchmark)
-public class EngineLargeTimersPerformanceTest {
+public class DbTimerInstanceStatePerfTest {
   public static final Logger LOG =
-      LoggerFactory.getLogger(EngineLargeTimersPerformanceTest.class.getName());
+      LoggerFactory.getLogger(DbTimerInstanceStatePerfTest.class.getName());
   private static final String PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID =
       "process-large-timers-messages";
 
   private long count;
-  private ProcessInstanceClient processInstanceClient;
+  private TimerClient timerClient;
   private TestEngine.TestContext testContext;
   private TestEngine singlePartitionEngine;
   private TemporaryFolder temporaryFolder;
@@ -99,32 +123,13 @@ public class EngineLargeTimersPerformanceTest {
 
   /** Will build up a state for the large state performance test */
   private void setupState(final TestEngine singlePartitionEngine) {
-
-    final ByteArrayOutputStream stream = new ByteArrayOutputStream();
-    try (final InputStream bpmnResource =
-        EngineLargeTimersPerformanceTest.class.getResourceAsStream(
-            "/message-with-timer-to-link.bpmn")) {
-      final byte[] bytes = bpmnResource.readAllBytes();
-      try (stream) {
-        stream.writeBytes(bytes);
-      }
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-    singlePartitionEngine
-        .createDeploymentClient()
-        .withXmlResource(stream.toByteArray(), "process-large-timers-performance-test.xml")
-        .deploy();
-
-    processInstanceClient = singlePartitionEngine.createProcessInstanceClient();
+    timerClient = singlePartitionEngine.createTimerClient();
 
     final int maxInstanceCount = 0;
     LOG.info("Starting {} process instances, please hold the line...", maxInstanceCount);
     for (int i = 0; i < maxInstanceCount; i++) {
-      processInstanceClient
-          .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID)
-          .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
-          .create();
+      timerClient.withDueDate(System.currentTimeMillis() + 3000).withProcessInstanceKey(count).withElementInstanceKey(count).withTargetElementId(String.valueOf(count)).withRepetitions(1).withProcessDefinitionKey(count).createTimer();
+      timerClient.triggerTimer();
       count++;
       RecordingExporter.reset();
 
@@ -181,18 +186,13 @@ public class EngineLargeTimersPerformanceTest {
 
   @Benchmark
   public Record<?> measureProcessExecutionTime() {
-    final long piKey =
-        processInstanceClient
-            .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID)
-            .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
-            .create();
+    final Record<TimerRecordValue> timerRecordValueRecord = timerClient.withDueDate(
+        System.currentTimeMillis() + 3000).withElementInstanceKey(count).withProcessInstanceKey(count).withTargetElementId(String.valueOf(count)).withRepetitions(1).withProcessDefinitionKey(count).createTimer();
+    timerClient.triggerTimer();
 
-    final Record<MessageSubscriptionRecordValue> message =
-        RecordingExporter.messageSubscriptionRecords()
-            .withIntent(MessageSubscriptionIntent.CREATED)
-            .withMessageName("message-process-large-timers-message")
-            .withProcessInstanceKey(piKey)
-            .getFirst();
+    final Record<TimerRecordValue> message = RecordingExporter.timerRecords(TimerIntent.CREATED)
+        .withElementInstanceKey(timerRecordValueRecord.getValue().getElementInstanceKey())
+        .getFirst();
 
     count++;
     singlePartitionEngine.reset();
@@ -214,3 +214,4 @@ public class EngineLargeTimersPerformanceTest {
         .isAtLeast(referenceScore, 0.25);
   }
 }
+

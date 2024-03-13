@@ -7,6 +7,11 @@
  */
 package io.camunda.zeebe.db.impl.rocksdb;
 
+import static org.rocksdb.RateLimiter.DEFAULT_AUTOTUNE;
+import static org.rocksdb.RateLimiter.DEFAULT_FAIRNESS;
+import static org.rocksdb.RateLimiter.DEFAULT_MODE;
+import static org.rocksdb.RateLimiter.DEFAULT_REFILL_PERIOD_MICROS;
+
 import io.camunda.zeebe.db.ConsistencyChecksSettings;
 import io.camunda.zeebe.db.ZeebeDb;
 import io.camunda.zeebe.db.ZeebeDbFactory;
@@ -28,11 +33,13 @@ import org.rocksdb.CompactionStyle;
 import org.rocksdb.CompressionType;
 import org.rocksdb.DBOptions;
 import org.rocksdb.DataBlockIndexType;
+import org.rocksdb.Env;
 import org.rocksdb.IndexType;
 import org.rocksdb.InfoLogLevel;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.RateLimiter;
+import org.rocksdb.RateLimiterMode;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.SstPartitionerFixedPrefixFactory;
@@ -130,7 +137,8 @@ public final class ZeebeRocksDbFactory<ColumnFamilyType extends Enum<ColumnFamil
     // limit I/O writes
     if (rocksDbConfiguration.getIoRateBytesPerSecond() > 0) {
       final RateLimiter rateLimiter =
-          new RateLimiter(rocksDbConfiguration.getIoRateBytesPerSecond());
+          new RateLimiter(rocksDbConfiguration.getIoRateBytesPerSecond(), DEFAULT_REFILL_PERIOD_MICROS, DEFAULT_FAIRNESS,
+              RateLimiterMode.ALL_IO, DEFAULT_AUTOTUNE);
       dbOptions.setRateLimiter(rateLimiter);
     }
 

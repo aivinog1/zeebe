@@ -65,7 +65,8 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
             ZbColumnFamilies.TIMER_DUE_DATES,
             transactionContext,
             dueDateCompositeKey,
-            DbNil.INSTANCE);
+            DbNil.INSTANCE,
+            true);
   }
 
   @Override
@@ -130,7 +131,7 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
               } finally {
                 consumerVisitorWatch.stop();
                 final long consumerVisitorWatchTime = consumerVisitorWatch.getTime(TimeUnit.MILLISECONDS);
-                if (consumerVisitorWatchTime > 1) {
+                if (consumerVisitorWatchTime >= 1) {
                   LOGGER.info("consumer.visit with consumer: {} took {}", consumer, consumerVisitorWatchTime);
                 }
               }

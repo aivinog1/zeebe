@@ -19,21 +19,26 @@ import io.camunda.zeebe.db.ZeebeDbException;
 import io.camunda.zeebe.db.impl.DbNil;
 import io.camunda.zeebe.db.impl.rocksdb.Loggers;
 import io.camunda.zeebe.db.impl.rocksdb.RocksDbConfiguration;
+import io.camunda.zeebe.protocol.ZbColumnFamilies;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
+import org.rocksdb.ColumnFamilyOptions;
 import org.rocksdb.Env;
 import org.rocksdb.OptimisticTransactionDB;
 import org.rocksdb.Options;
 import org.rocksdb.ReadOptions;
-import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksObject;
 import org.rocksdb.TablePropertiesCollectorFactory;
@@ -54,18 +59,32 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
   private final ReadOptions prefixReadOptions;
   private final ReadOptions defaultReadOptions;
   private final WriteOptions defaultWriteOptions;
-  private final ColumnFamilyHandle defaultHandle;
-  private final long defaultNativeHandle;
   private final ConsistencyChecksSettings consistencyChecksSettings;
+  private final Map<String, ColumnFamilyHandle> columnFamilyHandleMap;
+  private final Map<String, Long> columnFamilyNativeHandleMap;
 
   protected ZeebeTransactionDb(
-      final ColumnFamilyHandle defaultHandle,
+      final List<ColumnFamilyHandle> columnFamilyHandleList,
       final OptimisticTransactionDB optimisticTransactionDB,
       final List<AutoCloseable> closables,
       final RocksDbConfiguration rocksDbConfiguration,
       final ConsistencyChecksSettings consistencyChecksSettings) {
-    this.defaultHandle = defaultHandle;
-    defaultNativeHandle = getNativeHandle(defaultHandle);
+    this.columnFamilyHandleMap =
+        columnFamilyHandleList.stream()
+            .collect(
+                Collectors.toUnmodifiableMap(
+                    columnFamilyHandle -> {
+                      try {
+                        return new String(columnFamilyHandle.getName(), StandardCharsets.UTF_8);
+                      } catch (RocksDBException e) {
+                        throw new RuntimeException(e);
+                      }
+                    },
+                    Function.identity()));
+    this.columnFamilyNativeHandleMap =
+        columnFamilyHandleMap.entrySet().stream()
+            .map(entry -> new SimpleImmutableEntry<>(entry.getKey(), getNativeHandle(entry.getValue())))
+            .collect(Collectors.toUnmodifiableMap(Entry::getKey, Entry::getValue));
     this.optimisticTransactionDB = optimisticTransactionDB;
     this.closables = closables;
     this.consistencyChecksSettings = consistencyChecksSettings;
@@ -77,10 +96,12 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
             // setting a positive value to read-ahead is only useful when using network storage with
             // high latency, at the cost of making iterators more expensive (memory and computation
             // wise)
-            .setReadaheadSize(0)
-            .setAsyncIo(true);
+//                .setReadaheadSize(0)
+            .setReadaheadSize(10 * 1024)
+            .setAsyncIo(true)
+    ;
     closables.add(prefixReadOptions);
-    defaultReadOptions = new ReadOptions().setAsyncIo(true);
+    defaultReadOptions = new ReadOptions().setReadaheadSize(10 * 1024).setAsyncIo(true);
     closables.add(defaultReadOptions);
     defaultWriteOptions = new WriteOptions().setDisableWAL(rocksDbConfiguration.isWalDisabled());
     closables.add(defaultWriteOptions);
@@ -98,29 +119,46 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
           final RocksDbConfiguration rocksDbConfiguration,
           final ConsistencyChecksSettings consistencyChecksSettings)
           throws RocksDBException {
-    final ColumnFamilyDescriptor defaultColumnFamilyDescriptor = new ColumnFamilyDescriptor(
-        "ZeebeColumnFamily".getBytes(StandardCharsets.UTF_8), options.cfOptions());
-//    final var cfDescriptors =
-//            Arrays.asList( // todo: could consider using List.of
-//                defaultColumnFamilyDescriptor);
+    //    final var cfDescriptors =
+    //            Arrays.asList( // todo: could consider using List.of
+    //                defaultColumnFamilyDescriptor);
     //    final List<ColumnFamilyHandle> cfHandles = new ArrayList<>();
-    final TablePropertiesCollectorFactory tablePropertiesCollectorFactory = NewCompactOnDeletionCollectorFactory(20000,
-        200,
-        0.1);
-    final Options innerOptions = new Options(options.dbOptions(), options.cfOptions())
-        .setCreateIfMissing(true)
-        .setCreateMissingColumnFamilies(false)
-        .setMaxBackgroundJobs(4)
-        .setEnv(Env.getDefault().setBackgroundThreads(4));
-    innerOptions.setTablePropertiesCollectorFactory(List.of(tablePropertiesCollectorFactory));
+    final Map<ZbColumnFamilies, ColumnFamilyDescriptor> columnFamilyDescriptorMap =
+        Arrays.stream(ZbColumnFamilies.values())
+            .map(
+                zbColumnFamilies -> {
+                  final ColumnFamilyOptions columnFamilyOptions = options.cfOptions();
+                  return new SimpleImmutableEntry<>(
+                      zbColumnFamilies,
+                      new ColumnFamilyDescriptor(
+                          zbColumnFamilies.name().getBytes(StandardCharsets.UTF_8),
+                          columnFamilyOptions));
+                })
+            .collect(
+                Collectors.toUnmodifiableMap(
+                    SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
+    final TablePropertiesCollectorFactory tablePropertiesCollectorFactory =
+        NewCompactOnDeletionCollectorFactory(100000, 500, 0.1);
+    final Options outerOptions =
+        new Options(options.dbOptions(), options.cfOptions())
+            .setCreateIfMissing(true)
+            .setCreateMissingColumnFamilies(false);
+    final List<TablePropertiesCollectorFactory> tablePropertiesCollectorFactories = List.of(NewCompactOnDeletionCollectorFactory(100000, 500, 0.1));
+    outerOptions.setTablePropertiesCollectorFactory(tablePropertiesCollectorFactories);
     final OptimisticTransactionDB optimisticTransactionDB =
-        OptimisticTransactionDB.open(innerOptions, path);
+        OptimisticTransactionDB.open(outerOptions, path);
     //    final OptimisticTransactionDB optimisticTransactionDB =
     //        OptimisticTransactionDB.open(options.dbOptions(), path, cfDescriptors, cfHandles);
-    final ColumnFamilyHandle zeebeColumnFamilyHandle = optimisticTransactionDB.createColumnFamily(
-        defaultColumnFamilyDescriptor);
-    closables.add(zeebeColumnFamilyHandle);
-    closables.add(innerOptions);
+//    final ColumnFamilyHandle zeebeColumnFamilyHandle =
+//        optimisticTransactionDB.createColumnFamily(defaultColumnFamilyDescriptor);
+    final List<ColumnFamilyDescriptor> columnFamilyDescriptors =
+        columnFamilyDescriptorMap.values().stream().toList();
+    final List<ColumnFamilyHandle> columnFamilyHandleList =
+        optimisticTransactionDB.createColumnFamilies(columnFamilyDescriptors);
+    closables.addAll(columnFamilyHandleList);
+//    closables.add(zeebeColumnFamilyHandle);
+    closables.addAll(tablePropertiesCollectorFactories);
+    closables.add(outerOptions);
     closables.add(tablePropertiesCollectorFactory);
     closables.add(optimisticTransactionDB);
 
@@ -132,10 +170,10 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
 
     //    final ColumnFamilyHandle defaultColumnFamilyHandle = cfHandles.getFirst();
 
-    closables.add(zeebeColumnFamilyHandle);
+//    closables.add(zeebeColumnFamilyHandle);
 
     return new ZeebeTransactionDb<>(
-        zeebeColumnFamilyHandle,
+        columnFamilyHandleList,
         optimisticTransactionDB,
         closables,
         rocksDbConfiguration,
@@ -155,16 +193,16 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
     return prefixReadOptions;
   }
 
-  protected ColumnFamilyHandle getDefaultHandle() {
-    return defaultHandle;
+  protected ColumnFamilyHandle getHandle(final String columnFamilyName) {
+    return columnFamilyHandleMap.get(columnFamilyName);
   }
 
   protected long getReadOptionsNativeHandle() {
     return getNativeHandle(defaultReadOptions);
   }
 
-  protected long getDefaultNativeHandle() {
-    return defaultNativeHandle;
+  protected long getNativeHandle(final String name) {
+    return columnFamilyNativeHandleMap.get(name);
   }
 
   @Override
@@ -176,6 +214,15 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
           final ValueType valueInstance) {
     return new TransactionalColumnFamily<>(
         this, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance);
+  }
+
+  @Override
+  public <KeyType extends DbKey, ValueType extends DbValue> ColumnFamily<KeyType, ValueType> createColumnFamily(
+      final ColumnFamilyNames columnFamily, final TransactionContext context,
+      final KeyType keyInstance, final ValueType valueInstance,
+      final boolean isSingleDeletePreferred) {
+    return new TransactionalColumnFamily<>(
+        this, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, isSingleDeletePreferred);
   }
 
   @Override
@@ -194,7 +241,7 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
   public Optional<String> getProperty(final String propertyName) {
     String propertyValue = null;
     try {
-      propertyValue = optimisticTransactionDB.getProperty(defaultHandle, propertyName);
+      propertyValue = optimisticTransactionDB.getProperty(columnFamilyHandleMap.get(ZbColumnFamilies.DEFAULT.name()), propertyName);
     } catch (final RocksDBException rde) {
       LOG.debug(rde.getMessage(), rde);
     }
@@ -204,7 +251,8 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
   @Override
   public TransactionContext createContext() {
     final Transaction transaction = optimisticTransactionDB.beginTransaction(defaultWriteOptions);
-    final ZeebeTransaction zeebeTransaction = new ZeebeTransaction(transaction, this, optimisticTransactionDB);
+    final ZeebeTransaction zeebeTransaction =
+        new ZeebeTransaction(transaction, this, optimisticTransactionDB);
     closables.add(zeebeTransaction);
     return new DefaultTransactionContext(zeebeTransaction);
   }

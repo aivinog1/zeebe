@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1qwgz3r" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.20.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.4.0">
+  <bpmn:process id="process-large-only-timers" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_0mvfjzc</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:endEvent id="Event_1b31ptx">
+      <bpmn:incoming>Flow_0sbo0dn</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0mvfjzc" sourceRef="StartEvent_1" targetRef="Event_12gsivv" />
+    <bpmn:intermediateCatchEvent id="Event_12gsivv">
+      <bpmn:incoming>Flow_0mvfjzc</bpmn:incoming>
+      <bpmn:outgoing>Flow_0sbo0dn</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_11owg8a">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">=expireTime</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_0sbo0dn" sourceRef="Event_12gsivv" targetRef="Event_1b31ptx" />
+  </bpmn:process>
+  <bpmn:message id="Message_1q97c4a" name="message-process-large-timers-message">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=&#34;process-large-messages-correlation-key&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="Message_25mkoqf" name="timeouted-message">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=&#34;timeouted-message&#34;" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="process-large-only-timers">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1b31ptx_di" bpmnElement="Event_1b31ptx">
+        <dc:Bounds x="432" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1hvaihl_di" bpmnElement="Event_12gsivv">
+        <dc:Bounds x="292" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0mvfjzc_di" bpmnElement="Flow_0mvfjzc">
+        <di:waypoint x="215" y="117" />
+        <di:waypoint x="292" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0sbo0dn_di" bpmnElement="Flow_0sbo0dn">
+        <di:waypoint x="328" y="117" />
+        <di:waypoint x="432" y="117" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

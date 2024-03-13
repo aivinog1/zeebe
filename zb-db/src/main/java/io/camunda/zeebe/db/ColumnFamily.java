@@ -181,6 +181,4 @@ public interface ColumnFamily<KeyType extends DbKey, ValueType extends DbValue> 
    * @return the number of entries in the column family which have the same common prefix
    */
   long countEqualPrefix(DbKey prefix);
-
-  void compact();
 }

@@ -12,7 +12,6 @@ import static io.camunda.zeebe.db.impl.rocksdb.transaction.RocksDbInternal.isRoc
 import io.camunda.zeebe.db.TransactionOperation;
 import io.camunda.zeebe.db.ZeebeDbException;
 import io.camunda.zeebe.db.ZeebeDbTransaction;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import org.agrona.LangUtil;
 import org.rocksdb.ColumnFamilyHandle;
@@ -38,8 +37,9 @@ public class ZeebeTransaction implements ZeebeDbTransaction, AutoCloseable {
   private final OptimisticTransactionDB optimisticTransactionDB;
 
   public ZeebeTransaction(
-      final Transaction transaction, final TransactionRenovator transactionRenovator, final
-      OptimisticTransactionDB optimisticTransactionDB) {
+      final Transaction transaction,
+      final TransactionRenovator transactionRenovator,
+      final OptimisticTransactionDB optimisticTransactionDB) {
     this.optimisticTransactionDB = optimisticTransactionDB;
     this.transactionRenovator = transactionRenovator;
     this.transaction = transaction;
@@ -113,7 +113,8 @@ public class ZeebeTransaction implements ZeebeDbTransaction, AutoCloseable {
       if (getStopWatchTotalTime > 1) {
         LOGGER.info("Get time: {}ms", getStopWatchTotalTime);
         LOGGER.info("Get transaction. GetFromMemtableTime: {}", perfContext.getFromMemtableTime());
-        LOGGER.info("Get transaction. GetFromOutputFilesTime: {}", perfContext.getFromOutputFilesTime());
+        LOGGER.info(
+            "Get transaction. GetFromOutputFilesTime: {}", perfContext.getFromOutputFilesTime());
         LOGGER.info("Get transaction. SeekOnMemtableTime: {}", perfContext.getSeekOnMemtableTime());
       }
     }
@@ -124,6 +125,14 @@ public class ZeebeTransaction implements ZeebeDbTransaction, AutoCloseable {
     try {
       RocksDbInternal.removeWithHandle.invokeExact(
           transaction, nativeHandle, key, keyLength, columnFamilyHandle, false);
+    } catch (final Throwable e) {
+      LangUtil.rethrowUnchecked(e);
+    }
+  }
+
+  public void singleDelete(final long columnFamilyHandle, final byte[] key, final int keyLength) throws Exception {
+    try{
+      RocksDbInternal.singleDeleteWithHandle.invokeExact(transaction, nativeHandle, key, keyLength, columnFamilyHandle, false);
     } catch (final Throwable e) {
       LangUtil.rethrowUnchecked(e);
     }

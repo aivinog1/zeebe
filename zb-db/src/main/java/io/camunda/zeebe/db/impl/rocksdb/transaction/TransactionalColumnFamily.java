@@ -66,7 +66,27 @@ class TransactionalColumnFamily<
   private final ValueType valueInstance;
   private final KeyType keyInstance;
   private final ColumnFamilyContext columnFamilyContext;
-  private final ForeignKeyChecker foreignKeyChecker;
+  private final ForeignKeyChecker<?> foreignKeyChecker;
+  private final boolean isSingleDeletePreferred;
+
+  TransactionalColumnFamily(
+      final ZeebeTransactionDb<ColumnFamilyNames> transactionDb,
+      final ConsistencyChecksSettings consistencyChecksSettings,
+      final ColumnFamilyNames columnFamily,
+      final TransactionContext context,
+      final KeyType keyInstance,
+      final ValueType valueInstance,
+      boolean isSingleDeletePreferred) {
+    this.transactionDb = transactionDb;
+    this.consistencyChecksSettings = consistencyChecksSettings;
+    this.columnFamily = columnFamily;
+    this.context = context;
+    this.keyInstance = keyInstance;
+    this.valueInstance = valueInstance;
+    columnFamilyContext = new ColumnFamilyContext(columnFamily.ordinal());
+    foreignKeyChecker = new ForeignKeyChecker<>(transactionDb, consistencyChecksSettings, columnFamily);
+    this.isSingleDeletePreferred = isSingleDeletePreferred;
+  }
 
   TransactionalColumnFamily(
       final ZeebeTransactionDb<ColumnFamilyNames> transactionDb,
@@ -75,14 +95,7 @@ class TransactionalColumnFamily<
       final TransactionContext context,
       final KeyType keyInstance,
       final ValueType valueInstance) {
-    this.transactionDb = transactionDb;
-    this.consistencyChecksSettings = consistencyChecksSettings;
-    this.columnFamily = columnFamily;
-    this.context = context;
-    this.keyInstance = keyInstance;
-    this.valueInstance = valueInstance;
-    columnFamilyContext = new ColumnFamilyContext(columnFamily.ordinal());
-    foreignKeyChecker = new ForeignKeyChecker(transactionDb, consistencyChecksSettings);
+    this(transactionDb, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, false);
   }
 
   @Override
@@ -95,7 +108,7 @@ class TransactionalColumnFamily<
           assertKeyDoesNotExist(transaction);
           assertForeignKeysExist(transaction, key, value);
           transaction.put(
-              transactionDb.getDefaultNativeHandle(),
+              transactionDb.getNativeHandle(columnFamily.name()),
               columnFamilyContext.getKeyBufferArray(),
               columnFamilyContext.getKeyLength(),
               columnFamilyContext.getValueBufferArray(),
@@ -112,7 +125,7 @@ class TransactionalColumnFamily<
           assertKeyExists(transaction);
           assertForeignKeysExist(transaction, key, value);
           transaction.put(
-              transactionDb.getDefaultNativeHandle(),
+              transactionDb.getNativeHandle(columnFamily.name()),
               columnFamilyContext.getKeyBufferArray(),
               columnFamilyContext.getKeyLength(),
               columnFamilyContext.getValueBufferArray(),
@@ -128,7 +141,7 @@ class TransactionalColumnFamily<
           columnFamilyContext.writeValue(value);
           assertForeignKeysExist(transaction, key, value);
           transaction.put(
-              transactionDb.getDefaultNativeHandle(),
+              transactionDb.getNativeHandle(columnFamily.name()),
               columnFamilyContext.getKeyBufferArray(),
               columnFamilyContext.getKeyLength(),
               columnFamilyContext.getValueBufferArray(),
@@ -143,7 +156,7 @@ class TransactionalColumnFamily<
           columnFamilyContext.writeKey(key);
           final byte[] value =
               transaction.get(
-                  transactionDb.getDefaultNativeHandle(),
+                  transactionDb.getNativeHandle(columnFamily.name()),
                   transactionDb.getReadOptionsNativeHandle(),
                   columnFamilyContext.getKeyBufferArray(),
                   columnFamilyContext.getKeyLength());
@@ -226,10 +239,17 @@ class TransactionalColumnFamily<
         transaction -> {
           columnFamilyContext.writeKey(key);
           assertKeyExists(transaction);
-          transaction.delete(
-              transactionDb.getDefaultNativeHandle(),
-              columnFamilyContext.getKeyBufferArray(),
-              columnFamilyContext.getKeyLength());
+          if (isSingleDeletePreferred) {
+            transaction.singleDelete(
+                transactionDb.getNativeHandle(columnFamily.name()),
+                columnFamilyContext.getKeyBufferArray(),
+                columnFamilyContext.getKeyLength());
+          } else {
+            transaction.delete(
+                transactionDb.getNativeHandle(columnFamily.name()),
+                columnFamilyContext.getKeyBufferArray(),
+                columnFamilyContext.getKeyLength());
+          }
         });
     //    if (deleteCounter % COMPACTION_COUNTER == 0) {
     //      compact();
@@ -242,10 +262,18 @@ class TransactionalColumnFamily<
     ensureInOpenTransaction(
         transaction -> {
           columnFamilyContext.writeKey(key);
-          transaction.delete(
-              transactionDb.getDefaultNativeHandle(),
-              columnFamilyContext.getKeyBufferArray(),
-              columnFamilyContext.getKeyLength());
+          if (isSingleDeletePreferred) {
+            transaction.singleDelete(
+                transactionDb.getNativeHandle(columnFamily.name()),
+                columnFamilyContext.getKeyBufferArray(),
+                columnFamilyContext.getKeyLength());
+          } else {
+            transaction.delete(
+                transactionDb.getNativeHandle(columnFamily.name()),
+                columnFamilyContext.getKeyBufferArray(),
+                columnFamilyContext.getKeyLength());
+          }
+
         });
     //    if (deleteCounter % COMPACTION_COUNTER == 0) {
     //      compact();
@@ -259,7 +287,7 @@ class TransactionalColumnFamily<
           columnFamilyContext.writeKey(key);
           final byte[] value =
               transaction.get(
-                  transactionDb.getDefaultNativeHandle(),
+                  transactionDb.getNativeHandle(columnFamily.name()),
                   transactionDb.getReadOptionsNativeHandle(),
                   columnFamilyContext.getKeyBufferArray(),
                   columnFamilyContext.getKeyLength());
@@ -293,15 +321,6 @@ class TransactionalColumnFamily<
     return countEachInPrefix(prefix);
   }
 
-  @Override
-  public void compact() {
-    try {
-      transactionDb.getOptimisticTransactionDB().compactRange(transactionDb.getDefaultHandle());
-    } catch (RocksDBException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   private void assertForeignKeysExist(final ZeebeTransaction transaction, final Object... keys)
       throws Exception {
     if (!consistencyChecksSettings.enableForeignKeyChecks()) {
@@ -320,7 +339,7 @@ class TransactionalColumnFamily<
     }
     final var value =
         transaction.get(
-            transactionDb.getDefaultNativeHandle(),
+            transactionDb.getNativeHandle(columnFamily.name()),
             transactionDb.getReadOptionsNativeHandle(),
             columnFamilyContext.getKeyBufferArray(),
             columnFamilyContext.getKeyLength());
@@ -336,7 +355,7 @@ class TransactionalColumnFamily<
     }
     final var value =
         transaction.get(
-            transactionDb.getDefaultNativeHandle(),
+            transactionDb.getNativeHandle(columnFamily.name()),
             transactionDb.getReadOptionsNativeHandle(),
             columnFamilyContext.getKeyBufferArray(),
             columnFamilyContext.getKeyLength());
@@ -358,7 +377,7 @@ class TransactionalColumnFamily<
 
   RocksIterator newIterator(final TransactionContext context, final ReadOptions options) {
     final var currentTransaction = (ZeebeTransaction) context.getCurrentTransaction();
-    return currentTransaction.newIterator(options, transactionDb.getDefaultHandle());
+    return currentTransaction.newIterator(options, transactionDb.getHandle(columnFamily.name()));
   }
 
   /**
@@ -409,7 +428,8 @@ class TransactionalColumnFamily<
             try (final RocksdbMeasuredIteratorWrapper iterator =
                 new RocksdbMeasuredIteratorWrapper(
                     newIterator(context, transactionDb.getPrefixReadOptions()),
-                    transactionDb.getOptimisticTransactionDB())) {
+                    transactionDb.getOptimisticTransactionDB(),
+                    columnFamily)) {
 
               boolean shouldVisitNext = true;
               final StopWatch forSeekStopWatch = StopWatch.create();
@@ -545,7 +565,8 @@ class TransactionalColumnFamily<
     return iteratorConsumer.visit(keyInstance, valueInstance);
   }
 
-  public static final class RocksdbMeasuredIteratorWrapper
+  public static final class RocksdbMeasuredIteratorWrapper<
+      ColumnFamilyNames extends Enum<ColumnFamilyNames>>
       implements RocksIteratorInterface, AutoCloseable {
 
     private static final Logger LOGGER =
@@ -553,10 +574,12 @@ class TransactionalColumnFamily<
 
     private final RocksIterator parent;
     private final RocksDB rocksDB;
+    private final ColumnFamilyNames columnFamilyNames;
 
-    public RocksdbMeasuredIteratorWrapper(final RocksIterator parent, RocksDB rocksDB) {
+    public RocksdbMeasuredIteratorWrapper(final RocksIterator parent, final RocksDB rocksDB, final ColumnFamilyNames columnFamilyNames) {
       this.parent = parent;
       this.rocksDB = rocksDB;
+      this.columnFamilyNames = columnFamilyNames;
     }
 
     public RocksIterator getParent() {
@@ -617,25 +640,27 @@ class TransactionalColumnFamily<
       }
       final long seekTimeInMs = seekWatch.getTime(TimeUnit.MILLISECONDS);
       if (seekTimeInMs > 1) {
-        LOGGER.info("Seek was: {}ms", seekTimeInMs);
+        LOGGER.info("Seek for: {} was: {}ms", columnFamilyNames.name(), seekTimeInMs);
         LOGGER.info(
-            "Seek Rocksdb perf context. SeekChildSeekCount: {}",
+            "Seek for: {} Rocksdb perf context. SeekChildSeekCount: {}", columnFamilyNames.name(),
             perfContext.getSeekChildSeekCount());
         LOGGER.info(
-            "Seek Rocksdb perf context. SeekChildSeekTime: {}", perfContext.getSeekChildSeekTime());
+            "Seek for: {} Rocksdb perf context. SeekChildSeekTime: {}", columnFamilyNames.name(), perfContext.getSeekChildSeekTime());
         LOGGER.info(
-            "Seek Rocksdb perf context. Number Async Seek: {}", perfContext.getNumberAsyncSeek());
+            "Seek for: {} Rocksdb perf context. Number Async Seek: {}", columnFamilyNames.name(), perfContext.getNumberAsyncSeek());
         LOGGER.info(
-            "Seek Rocksdb perf context. IterSeekCpuNanos: {}", perfContext.getIterSeekCpuNanos());
+            "Seek for: {} Rocksdb perf context. IterSeekCpuNanos: {}", columnFamilyNames.name(), perfContext.getIterSeekCpuNanos());
         LOGGER.info(
-            "Seek Rocksdb perf context. KeyLockWaitTime: {}", perfContext.getKeyLockWaitTime());
+            "Seek for: {} Rocksdb perf context. KeyLockWaitTime: {}", columnFamilyNames.name(), perfContext.getKeyLockWaitTime());
         LOGGER.info(
-            "Seek Rocksdb perf context. KeyLockWaitCount: {}", perfContext.getKeyLockWaitCount());
+            "Seek for: {} Rocksdb perf context. KeyLockWaitCount: {}", columnFamilyNames.name(), perfContext.getKeyLockWaitCount());
         LOGGER.info(
-            "Seek Rocksdb perf context. GetInternalDeleteSkippedCount: {}",
+            "Seek for: {} Rocksdb perf context. GetInternalDeleteSkippedCount: {}",
+            columnFamilyNames.name(),
             perfContext.getInternalDeleteSkippedCount());
         LOGGER.info(
-            "Seek Rocksdb perf context. FindNextUserEntryTime: {}",
+            "Seek for: {} Rocksdb perf context. FindNextUserEntryTime: {}",
+            columnFamilyNames.name(),
             perfContext.getFindNextUserEntryTime());
       }
     }
@@ -660,10 +685,16 @@ class TransactionalColumnFamily<
       }
       final long nextTimeInMs = nextStopWatch.getTime(TimeUnit.MILLISECONDS);
       if (nextTimeInMs > 1) {
-        LOGGER.info("Next was: {}ms", nextTimeInMs);
+        LOGGER.info("Next for: {} was: {}ms", columnFamilyNames.name(), nextTimeInMs);
         LOGGER.info(
-            "Next Rocksdb perf context. NextOnMemtableCount: {}",
+            "Next for: {} Rocksdb perf context. NextOnMemtableCount: {}",
+            columnFamilyNames.name(),
             perfContext.getNextOnMemtableCount());
+        LOGGER.info("Next for: {} Rocksdb perf context. IterNextCpuNanos: {}", columnFamilyNames.name(), perfContext.getIterNextCpuNanos());
+        LOGGER.info(
+            "Next for: {} Rocksdb perf context. FindNextUserEntryTime: {}",
+            columnFamilyNames.name(),
+            perfContext.getFindNextUserEntryTime());
       }
     }
 

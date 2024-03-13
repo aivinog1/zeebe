@@ -60,7 +60,7 @@ public final class DefaultTransactionContext implements TransactionContext {
       transaction.resetTransaction();
       operations.run();
       transaction.commitInternal();
-    } finally {
+    } catch (final Throwable e){
       transaction.rollbackInternal();
     }
   }

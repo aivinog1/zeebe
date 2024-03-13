@@ -38,6 +38,8 @@ public final class RocksDbInternal {
   static MethodHandle getWithHandle;
   static MethodHandle removeWithHandle;
 
+  static MethodHandle singleDeleteWithHandle;
+
   static {
     RocksDB.loadLibrary();
 
@@ -54,6 +56,7 @@ public final class RocksDbInternal {
     putWithHandle();
     getWithHandle();
     removeWithHandle();
+    singleDeleteWithHandle();
   }
 
   private static void nativeHandles() throws NoSuchFieldException {
@@ -111,6 +114,18 @@ public final class RocksDbInternal {
     method.setAccessible(true);
     try {
       removeWithHandle = MethodHandles.lookup().unreflect(method);
+    } catch (final IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static void singleDeleteWithHandle() throws NoSuchMethodException {
+    final var method =
+        Transaction.class.getDeclaredMethod(
+            "singleDelete", Long.TYPE, byte[].class, Integer.TYPE, Long.TYPE, Boolean.TYPE);
+    method.setAccessible(true);
+    try {
+      singleDeleteWithHandle = MethodHandles.lookup().unreflect(method);
     } catch (final IllegalAccessException e) {
       throw new RuntimeException(e);
     }

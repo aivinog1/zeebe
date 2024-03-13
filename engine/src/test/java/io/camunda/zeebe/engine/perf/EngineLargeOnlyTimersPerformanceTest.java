@@ -10,15 +10,7 @@ package io.camunda.zeebe.engine.perf;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import io.camunda.zeebe.engine.perf.TestEngine.TestContext;
-import io.camunda.zeebe.engine.state.message.MessageSubscription;
-import io.camunda.zeebe.engine.util.MockTypedRecord;
-import io.camunda.zeebe.engine.util.Records;
 import io.camunda.zeebe.engine.util.client.ProcessInstanceClient;
-import io.camunda.zeebe.protocol.impl.record.RecordMetadata;
-import io.camunda.zeebe.protocol.impl.record.value.processinstance.ProcessInstanceRecord;
-import io.camunda.zeebe.protocol.record.Record;
-import io.camunda.zeebe.protocol.record.intent.MessageSubscriptionIntent;
-import io.camunda.zeebe.protocol.record.value.MessageSubscriptionRecordValue;
 import io.camunda.zeebe.scheduler.ActorScheduler;
 import io.camunda.zeebe.scheduler.clock.DefaultActorClock;
 import io.camunda.zeebe.test.util.AutoCloseableRule;
@@ -29,13 +21,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.CopyOption;
 import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.Map;
@@ -76,15 +65,15 @@ import org.slf4j.LoggerFactory;
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @State(org.openjdk.jmh.annotations.Scope.Benchmark)
-public class EngineLargeTimersPerformanceTest {
+public class EngineLargeOnlyTimersPerformanceTest {
   public static final Logger LOG =
-      LoggerFactory.getLogger(EngineLargeTimersPerformanceTest.class.getName());
-  private static final String PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID =
-      "process-large-timers-messages";
+      LoggerFactory.getLogger(EngineLargeOnlyTimersPerformanceTest.class.getName());
+  private static final String PROCESS_LARGE_TIMERS_MESSAGES =
+      "process-large-only-timers";
 
   private long count;
   private ProcessInstanceClient processInstanceClient;
-  private TestEngine.TestContext testContext;
+  private TestContext testContext;
   private TestEngine singlePartitionEngine;
   private TemporaryFolder temporaryFolder;
 
@@ -102,8 +91,8 @@ public class EngineLargeTimersPerformanceTest {
 
     final ByteArrayOutputStream stream = new ByteArrayOutputStream();
     try (final InputStream bpmnResource =
-        EngineLargeTimersPerformanceTest.class.getResourceAsStream(
-            "/message-with-timer-to-link.bpmn")) {
+        EngineLargeOnlyTimersPerformanceTest.class.getResourceAsStream(
+            "/only-timer.bpmn")) {
       final byte[] bytes = bpmnResource.readAllBytes();
       try (stream) {
         stream.writeBytes(bytes);
@@ -113,7 +102,7 @@ public class EngineLargeTimersPerformanceTest {
     }
     singlePartitionEngine
         .createDeploymentClient()
-        .withXmlResource(stream.toByteArray(), "process-large-timers-performance-test.xml")
+        .withXmlResource(stream.toByteArray(), "process-large-only-timers-performance-test.xml")
         .deploy();
 
     processInstanceClient = singlePartitionEngine.createProcessInstanceClient();
@@ -122,7 +111,7 @@ public class EngineLargeTimersPerformanceTest {
     LOG.info("Starting {} process instances, please hold the line...", maxInstanceCount);
     for (int i = 0; i < maxInstanceCount; i++) {
       processInstanceClient
-          .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID)
+          .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES)
           .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
           .create();
       count++;
@@ -137,7 +126,7 @@ public class EngineLargeTimersPerformanceTest {
     LOG.info("Started {} process instances.", count);
   }
 
-  private TestEngine.TestContext createTestContext() throws IOException {
+  private TestContext createTestContext() throws IOException {
     final var autoCloseableRule = new AutoCloseableRule();
     temporaryFolder = new TemporaryFolder();
     temporaryFolder.create();
@@ -180,23 +169,16 @@ public class EngineLargeTimersPerformanceTest {
   }
 
   @Benchmark
-  public Record<?> measureProcessExecutionTime() {
+  public long measureProcessExecutionTime() {
     final long piKey =
         processInstanceClient
-            .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES_BPMN_PROCESS_ID)
+            .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES)
             .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
             .create();
 
-    final Record<MessageSubscriptionRecordValue> message =
-        RecordingExporter.messageSubscriptionRecords()
-            .withIntent(MessageSubscriptionIntent.CREATED)
-            .withMessageName("message-process-large-timers-message")
-            .withProcessInstanceKey(piKey)
-            .getFirst();
-
     count++;
     singlePartitionEngine.reset();
-    return message;
+    return piKey;
   }
 
   @JMHTest(value = "measureProcessExecutionTime", isAdditionalProfilersEnabled = true)
