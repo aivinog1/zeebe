@@ -49,7 +49,7 @@ import org.openjdk.jmh.annotations.Warmup;
       "-XX:+UnlockDiagnosticVMOptions",
       "-XX:+DebugNonSafepoints",
       "-XX:+AlwaysPreTouch",
-//      "-XX:+UseParallelGC"
+      //      "-XX:+UseParallelGC"
       //      "-XX:+UseShenandoahGC",
       //      "-XX:+UseZGC",
       //      "-XX:+ZGenerational",
@@ -67,19 +67,21 @@ public class ColumnFamilyIterationPerfTest {
   private AutoCloseableRule autoCloseableRule;
   private DbLong columnFamilyKey;
   private ArrayBlockingQueue<Long> deletedKeyStorage;
+  private ZeebeDb<ZbColumnFamilies> zeebeDb;
 
   @Setup
   public void setup() throws Throwable {
     deletedKeyStorage = new ArrayBlockingQueue<>(1_000_000);
     temporaryFolder = new TemporaryFolder();
     temporaryFolder.create();
-    final ZeebeDb<ZbColumnFamilies> zeebeDb =
+    zeebeDb =
         DefaultZeebeDbFactory.<ZbColumnFamilies>getDefaultFactory()
             .createDb(temporaryFolder.getRoot());
     autoCloseableRule = new AutoCloseableRule();
     autoCloseableRule.manage(zeebeDb);
     columnFamilyKey = new DbLong();
-    longKeyColumnFamily = zeebeDb.createColumnFamily(
+    longKeyColumnFamily =
+        zeebeDb.createColumnFamily(
             ZbColumnFamilies.TIMER_DUE_DATES,
             zeebeDb.createContext(),
             columnFamilyKey,
@@ -113,7 +115,7 @@ public class ColumnFamilyIterationPerfTest {
   @Benchmark
   public void measureExecutionTime() {
     // create 1000 instances
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 10000; i++) {
       columnFamilyKey.wrapLong(System.nanoTime());
       longKeyColumnFamily.insert(columnFamilyKey, DbNil.INSTANCE);
     }
@@ -128,10 +130,12 @@ public class ColumnFamilyIterationPerfTest {
             return false;
           }
         });
-    deletedKeyStorage.forEach(time -> {
-      columnFamilyKey.wrapLong(time);
-      longKeyColumnFamily.deleteExisting(columnFamilyKey);
-    });
+    deletedKeyStorage.forEach(
+        time -> {
+          columnFamilyKey.wrapLong(time);
+          longKeyColumnFamily.deleteExisting(columnFamilyKey);
+        });
+    deletedKeyStorage.clear();
   }
 
   @JMHTest(value = "measureExecutionTime", isAdditionalProfilersEnabled = true)
