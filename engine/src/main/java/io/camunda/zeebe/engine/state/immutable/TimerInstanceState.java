@@ -17,7 +17,8 @@ public interface TimerInstanceState {
    *
    * @return due date of the next scheduled timer (or {@code -1} if no succeeding timer exists)
    */
-  long processTimersWithDueDateBefore(long timestamp, TimerVisitor consumer);
+  long processTimersWithDueDateBefore(
+      long timestamp, TimerVisitor consumer, final long limit, final Runnable rescheduleFunction);
 
   /**
    * NOTE: the timer instance given to the consumer is shared and will be mutated on the next

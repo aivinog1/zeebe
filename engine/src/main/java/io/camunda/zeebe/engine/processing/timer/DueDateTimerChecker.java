@@ -7,6 +7,7 @@
  */
 package io.camunda.zeebe.engine.processing.timer;
 
+import io.camunda.zeebe.engine.EngineConfiguration;
 import io.camunda.zeebe.engine.processing.scheduled.DueDateChecker;
 import io.camunda.zeebe.engine.state.immutable.TimerInstanceState;
 import io.camunda.zeebe.engine.state.immutable.TimerInstanceState.TimerVisitor;
@@ -27,14 +28,30 @@ public class DueDateTimerChecker implements StreamProcessorLifecycleAware {
   private static final double GIVE_YIELD_FACTOR = 0.5;
   private final DueDateChecker dueDateChecker;
 
+  private long overLimitDelay = 0;
+
   public DueDateTimerChecker(
-      final TimerInstanceState timerInstanceState, final FeatureFlags featureFlags) {
+      final TimerInstanceState timerInstanceState,
+      final FeatureFlags featureFlags,
+      final EngineConfiguration configuration) {
+    final ActorClock actorClock = ActorClock.current();
     dueDateChecker =
         new DueDateChecker(
             TIMER_RESOLUTION,
             featureFlags.enableTimerDueDateCheckerAsync(),
             new TriggerTimersSideEffect(
-                timerInstanceState, ActorClock.current(), featureFlags.yieldingDueDateChecker()));
+                timerInstanceState,
+                actorClock,
+                featureFlags.yieldingDueDateChecker(),
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    overLimitDelay =
+                        configuration.getTimerOverLimitBackoff().applyAsLong(overLimitDelay);
+                    dueDateChecker.schedule(actorClock.getTimeMillis() + overLimitDelay);
+                  }
+                },
+                configuration.getTimerLimit()));
   }
 
   public void scheduleTimer(final long dueDate) {
@@ -73,14 +90,20 @@ public class DueDateTimerChecker implements StreamProcessorLifecycleAware {
 
     private final TimerInstanceState timerInstanceState;
     private final boolean yieldControl;
+    private final Runnable reTriggerFunction;
+    private final long limit;
 
     public TriggerTimersSideEffect(
         final TimerInstanceState timerInstanceState,
         final ActorClock actorClock,
-        final boolean yieldControl) {
+        final boolean yieldControl,
+        final Runnable reTriggerFunction,
+        final long limit) {
       this.timerInstanceState = timerInstanceState;
       this.actorClock = actorClock;
       this.yieldControl = yieldControl;
+      this.reTriggerFunction = reTriggerFunction;
+      this.limit = limit;
     }
 
     @Override
@@ -98,7 +121,8 @@ public class DueDateTimerChecker implements StreamProcessorLifecycleAware {
         timerVisitor = new WriteTriggerTimerCommandVisitor(taskResultBuilder);
       }
 
-      return timerInstanceState.processTimersWithDueDateBefore(now, timerVisitor);
+      return timerInstanceState.processTimersWithDueDateBefore(
+          now, timerVisitor, limit, reTriggerFunction);
     }
   }
 

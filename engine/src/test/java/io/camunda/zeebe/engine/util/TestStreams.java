@@ -249,6 +249,7 @@ public final class TestStreams {
     final var streamProcessorListeners = new ArrayList<StreamProcessorListener>();
     streamProcessorListenerOpt.ifPresent(streamProcessorListeners::add);
 
+    final EngineConfiguration config = new EngineConfiguration().setTimerLimit(125);
     final var builder =
         StreamProcessor.builder()
             .logStream(stream.getAsyncLogStream())
@@ -256,7 +257,7 @@ public final class TestStreams {
             .actorSchedulingService(actorScheduler)
             .commandResponseWriter(mockCommandResponseWriter)
             .listener(new StreamProcessorListenerRelay(streamProcessorListeners))
-            .recordProcessors(List.of(new Engine(wrappedFactory, new EngineConfiguration())))
+            .recordProcessors(List.of(new Engine(wrappedFactory, config)))
             .streamProcessorMode(streamProcessorMode)
             .maxCommandsInBatch(maxCommandsInBatch)
             .partitionCommandSender(mock(InterPartitionCommandSender.class));
