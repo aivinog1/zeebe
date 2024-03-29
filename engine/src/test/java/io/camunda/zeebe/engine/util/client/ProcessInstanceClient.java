@@ -38,10 +38,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.agrona.DirectBuffer;
+import org.apache.commons.lang3.time.StopWatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ProcessInstanceClient {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ProcessInstanceClient.class);
 
   private final CommandWriter writer;
 
@@ -63,8 +69,8 @@ public final class ProcessInstanceClient {
         SUCCESS_EXPECTATION =
             (position) ->
                 RecordingExporter.processInstanceCreationRecords()
-                    .withIntent(ProcessInstanceCreationIntent.CREATED)
                     .withSourceRecordPosition(position)
+                    .withIntent(ProcessInstanceCreationIntent.CREATED)
                     .getFirst();
 
     private static final Function<Long, Record<ProcessInstanceCreationRecordValue>>
@@ -124,10 +130,31 @@ public final class ProcessInstanceClient {
     }
 
     public long create() {
-      final long position =
-          writer.writeCommand(ProcessInstanceCreationIntent.CREATE, processInstanceCreationRecord);
+      final long position;
+      final StopWatch writeCommandStopWatch = StopWatch.create();
+      try {
+        writeCommandStopWatch.start();
+        position = writer.writeCommand(ProcessInstanceCreationIntent.CREATE, processInstanceCreationRecord);
+      } finally {
+        writeCommandStopWatch.stop();
+        final long writeCommandStopWatchTime = writeCommandStopWatch.getTime(TimeUnit.MILLISECONDS);
+        if (writeCommandStopWatchTime > 300) {
+          LOGGER.info("Create Write Command took {} ms", writeCommandStopWatchTime);
+        }
+      }
 
-      final var resultingRecord = expectation.apply(position);
+      final Record<ProcessInstanceCreationRecordValue> resultingRecord;
+      final StopWatch expectationStopWatch = StopWatch.create();
+      try{
+        expectationStopWatch.start();
+        resultingRecord = expectation.apply(position);
+      } finally{
+        expectationStopWatch.stop();
+        final long expectationStopWatchTime = expectationStopWatch.getTime(TimeUnit.MILLISECONDS);
+        if (expectationStopWatchTime > 300) {
+          LOGGER.info("Expectation took {} ms", expectationStopWatchTime);
+        }
+      }
       return resultingRecord.getValue().getProcessInstanceKey();
     }
 

@@ -26,6 +26,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.agrona.DirectBuffer;
 import org.apache.commons.lang3.time.StopWatch;
+import org.rocksdb.CompactRangeOptions;
 import org.rocksdb.PerfContext;
 import org.rocksdb.PerfLevel;
 import org.rocksdb.ReadOptions;
@@ -68,6 +69,7 @@ class TransactionalColumnFamily<
   private final ColumnFamilyContext columnFamilyContext;
   private final ForeignKeyChecker<?> foreignKeyChecker;
   private final boolean isSingleDeletePreferred;
+  private final CompactRangeOptions compactRangeOptions;
 
   TransactionalColumnFamily(
       final ZeebeTransactionDb<ColumnFamilyNames> transactionDb,
@@ -76,7 +78,7 @@ class TransactionalColumnFamily<
       final TransactionContext context,
       final KeyType keyInstance,
       final ValueType valueInstance,
-      boolean isSingleDeletePreferred) {
+      boolean isSingleDeletePreferred, CompactRangeOptions compactRangeOptions) {
     this.transactionDb = transactionDb;
     this.consistencyChecksSettings = consistencyChecksSettings;
     this.columnFamily = columnFamily;
@@ -84,6 +86,7 @@ class TransactionalColumnFamily<
     this.keyInstance = keyInstance;
     this.valueInstance = valueInstance;
     columnFamilyContext = new ColumnFamilyContext(columnFamily.ordinal());
+    this.compactRangeOptions = compactRangeOptions;
     foreignKeyChecker = new ForeignKeyChecker<>(transactionDb, consistencyChecksSettings, columnFamily);
     this.isSingleDeletePreferred = isSingleDeletePreferred;
   }
@@ -94,8 +97,8 @@ class TransactionalColumnFamily<
       final ColumnFamilyNames columnFamily,
       final TransactionContext context,
       final KeyType keyInstance,
-      final ValueType valueInstance) {
-    this(transactionDb, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, false);
+      final ValueType valueInstance, CompactRangeOptions compactRangeOptions) {
+    this(transactionDb, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, false, compactRangeOptions);
   }
 
   @Override
@@ -321,6 +324,21 @@ class TransactionalColumnFamily<
     return countEachInPrefix(prefix);
   }
 
+  @Override
+  public void compact() {
+    try {
+      transactionDb
+          .getOptimisticTransactionDB()
+          .compactRange(
+              transactionDb.getHandle(columnFamily.name()),
+              null,
+              null,
+              compactRangeOptions);
+    } catch (RocksDBException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private void assertForeignKeysExist(final ZeebeTransaction transaction, final Object... keys)
       throws Exception {
     if (!consistencyChecksSettings.enableForeignKeyChecks()) {
@@ -425,11 +443,11 @@ class TransactionalColumnFamily<
       columnFamilyContext.withPrefixKey(
           prefix,
           (prefixKey, prefixLength) -> {
-            try (final RocksdbMeasuredIteratorWrapper iterator =
-                new RocksdbMeasuredIteratorWrapper(
+            try (final RocksdbMeasuredIteratorWrapper<ColumnFamilyNames> iterator =
+                new RocksdbMeasuredIteratorWrapper<>(
                     newIterator(context, transactionDb.getPrefixReadOptions()),
                     transactionDb.getOptimisticTransactionDB(),
-                    columnFamily)) {
+                    columnFamily, this)) {
 
               boolean shouldVisitNext = true;
               final StopWatch forSeekStopWatch = StopWatch.create();
@@ -575,11 +593,14 @@ class TransactionalColumnFamily<
     private final RocksIterator parent;
     private final RocksDB rocksDB;
     private final ColumnFamilyNames columnFamilyNames;
+    private final ColumnFamily<?, ?> columnFamily;
 
-    public RocksdbMeasuredIteratorWrapper(final RocksIterator parent, final RocksDB rocksDB, final ColumnFamilyNames columnFamilyNames) {
+    public RocksdbMeasuredIteratorWrapper(final RocksIterator parent, final RocksDB rocksDB, final ColumnFamilyNames columnFamilyNames,
+        ColumnFamily<?, ?> columnFamily) {
       this.parent = parent;
       this.rocksDB = rocksDB;
       this.columnFamilyNames = columnFamilyNames;
+      this.columnFamily = columnFamily;
     }
 
     public RocksIterator getParent() {

@@ -28,6 +28,7 @@ import io.camunda.zeebe.scheduler.clock.ActorClock;
 import io.camunda.zeebe.stream.api.scheduling.TaskResultBuilder;
 import java.time.Duration;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,8 @@ class DueDateTimerCheckerTest {
           new TestTimerInstanceStateThatSimulatesAnEndlessListOfDueTimers(
               mockTimer, testActorClock);
 
-      final var sut = new TriggerTimersSideEffect(testTimerInstanceState, testActorClock, true);
+      final var sut = new TriggerTimersSideEffect(testTimerInstanceState, testActorClock, true,
+          () -> null);
 
       // when
       sut.apply(mockTaskResultBuilder);
@@ -103,7 +105,7 @@ class DueDateTimerCheckerTest {
           new TestTimerInstanceStateThatSimulatesAnEndlessListOfDueTimers(
               mockTimer, testActorClock);
 
-      final var sut = new TriggerTimersSideEffect(testTimerInstanceState, testActorClock, true);
+      final var sut = new TriggerTimersSideEffect(testTimerInstanceState, testActorClock, true, () -> null);
 
       // when
       sut.apply(mockTaskResultBuilder);
@@ -229,6 +231,12 @@ class DueDateTimerCheckerTest {
         yield = !consumer.visit(timer);
       }
       return 0;
+    }
+
+    @Override
+    public long processTimersWithDueDateBefore(final long timestamp, final TimerVisitor consumer,
+        final long limit, final Supplier<Void> rescheduleFunc) {
+      return processTimersWithDueDateBefore(timestamp, consumer);
     }
 
     @Override

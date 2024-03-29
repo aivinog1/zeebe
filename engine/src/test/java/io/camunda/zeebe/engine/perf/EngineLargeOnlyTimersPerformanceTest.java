@@ -29,6 +29,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.time.StopWatch;
 import org.junit.rules.TemporaryFolder;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -54,7 +55,7 @@ import org.slf4j.LoggerFactory;
       "-XX:+DebugNonSafepoints",
       "-XX:+AlwaysPreTouch",
       "-XX:+UseParallelGC"
-//      "-XX:+UseShenandoahGC",
+      //      "-XX:+UseShenandoahGC",
       //      "-XX:+UseZGC",
       //      "-XX:+ZGenerational",
       //      "-Xlog:gc*=debug:file=gc.log",
@@ -68,8 +69,7 @@ import org.slf4j.LoggerFactory;
 public class EngineLargeOnlyTimersPerformanceTest {
   public static final Logger LOG =
       LoggerFactory.getLogger(EngineLargeOnlyTimersPerformanceTest.class.getName());
-  private static final String PROCESS_LARGE_TIMERS_MESSAGES =
-      "process-large-only-timers";
+  private static final String PROCESS_LARGE_TIMERS_MESSAGES = "process-large-only-timers";
 
   private long count;
   private ProcessInstanceClient processInstanceClient;
@@ -91,8 +91,7 @@ public class EngineLargeOnlyTimersPerformanceTest {
 
     final ByteArrayOutputStream stream = new ByteArrayOutputStream();
     try (final InputStream bpmnResource =
-        EngineLargeOnlyTimersPerformanceTest.class.getResourceAsStream(
-            "/only-timer.bpmn")) {
+        EngineLargeOnlyTimersPerformanceTest.class.getResourceAsStream("/only-timer.bpmn")) {
       final byte[] bytes = bpmnResource.readAllBytes();
       try (stream) {
         stream.writeBytes(bytes);
@@ -150,34 +149,57 @@ public class EngineLargeOnlyTimersPerformanceTest {
     LOG.info("Started {} process instances", count);
     final Path source = new File(temporaryFolder.getRoot(), "stream-1/state/runtime").toPath();
     final Path target = new File("rocksdbfiles/").toPath();
-    Files.walkFileTree(source, new SimpleFileVisitor<>() {
-      @Override
-      public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs)
-          throws IOException {
-        Files.createDirectories(target.resolve(source.relativize(dir).toString()));
-        return FileVisitResult.CONTINUE;
-      }
+    Files.walkFileTree(
+        source,
+        new SimpleFileVisitor<>() {
+          @Override
+          public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs)
+              throws IOException {
+            Files.createDirectories(target.resolve(source.relativize(dir).toString()));
+            return FileVisitResult.CONTINUE;
+          }
 
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-          throws IOException {
-        Files.copy(file, target.resolve(source.relativize(file).toString()), REPLACE_EXISTING);
-        return FileVisitResult.CONTINUE;
-      }
-    });
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+              throws IOException {
+            Files.copy(file, target.resolve(source.relativize(file).toString()), REPLACE_EXISTING);
+            return FileVisitResult.CONTINUE;
+          }
+        });
     testContext.autoCloseableRule().after();
   }
 
   @Benchmark
   public long measureProcessExecutionTime() {
-    final long piKey =
-        processInstanceClient
-            .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES)
-            .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
-            .create();
+    final long piKey;
+    final StopWatch createPIStopWatch = StopWatch.create();
+    try {
+      createPIStopWatch.start();
+      piKey =
+          processInstanceClient
+              .ofBpmnProcessId(PROCESS_LARGE_TIMERS_MESSAGES)
+              .withVariables(Map.of("expireTime", Duration.ofSeconds(3).toString()))
+              .create();
+    } finally {
+      createPIStopWatch.stop();
+      final long createPIMs = createPIStopWatch.getTime(TimeUnit.MILLISECONDS);
+      if (createPIMs > 300) {
+        LOG.info("CREATE PI took {} ms", createPIMs);
+      }
+    }
 
-    count++;
-    singlePartitionEngine.reset();
+    final StopWatch othersStopWatch = StopWatch.create();
+    try {
+      othersStopWatch.start();
+      count++;
+      singlePartitionEngine.reset();
+    } finally {
+      othersStopWatch.stop();
+      final long otherMs = othersStopWatch.getTime(TimeUnit.MILLISECONDS);
+      if (otherMs > 100) {
+        LOG.info("Other stuff took {} ms", otherMs);
+      }
+    }
     return piKey;
   }
 

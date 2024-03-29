@@ -24,7 +24,6 @@ import io.camunda.zeebe.test.util.AutoCloseableRule;
 import io.camunda.zeebe.test.util.record.RecordingExporter;
 import io.camunda.zeebe.util.FeatureFlags;
 import java.util.ArrayList;
-import java.util.Objects;
 import java.util.Optional;
 import org.junit.rules.TemporaryFolder;
 

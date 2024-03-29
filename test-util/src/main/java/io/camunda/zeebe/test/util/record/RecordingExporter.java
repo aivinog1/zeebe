@@ -23,6 +23,7 @@ import io.camunda.zeebe.protocol.record.intent.MessageBatchIntent;
 import io.camunda.zeebe.protocol.record.intent.MessageIntent;
 import io.camunda.zeebe.protocol.record.intent.MessageStartEventSubscriptionIntent;
 import io.camunda.zeebe.protocol.record.intent.MessageSubscriptionIntent;
+import io.camunda.zeebe.protocol.record.intent.ProcessInstanceCreationIntent;
 import io.camunda.zeebe.protocol.record.intent.ProcessInstanceIntent;
 import io.camunda.zeebe.protocol.record.intent.ProcessInstanceMigrationIntent;
 import io.camunda.zeebe.protocol.record.intent.ProcessInstanceModificationIntent;
@@ -77,8 +78,13 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import org.apache.commons.lang3.time.StopWatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class RecordingExporter implements Exporter {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RecordingExporter.class);
   public static final long DEFAULT_MAX_WAIT_TIME = Duration.ofSeconds(5).toMillis();
 
   private static final ConcurrentSkipListMap<Integer, Record<?>> RECORDS =
@@ -88,6 +94,9 @@ public final class RecordingExporter implements Exporter {
 
   private static long maximumWaitTime = DEFAULT_MAX_WAIT_TIME;
   private static volatile boolean autoAcknowledge = true;
+
+  private volatile long lastCreateTime;
+  private volatile long lastCreatePosition;
 
   private Controller controller;
 
@@ -114,6 +123,25 @@ public final class RecordingExporter implements Exporter {
 
   @Override
   public void export(final Record<?> record) {
+    if (record.getValue() instanceof ProcessInstanceCreationRecordValue creationRecordValue) {
+      if (record.getIntent().equals(ProcessInstanceCreationIntent.CREATE)) {
+        lastCreateTime = record.getTimestamp();
+        lastCreatePosition = record.getPosition();
+      }
+      if (record.getIntent().equals(ProcessInstanceCreationIntent.CREATED)) {
+        final long recordTimestamp = record.getTimestamp();
+        final long lag = recordTimestamp - lastCreateTime;
+        if (lag > 1_000) {
+          LOGGER.info("Old record is exported! Lag is {} ms", lag);
+          LOGGER.info("Position differences: {}", record.getPosition() - lastCreatePosition);
+          LOGGER.info("Previous record type: {}", RECORDS.lastEntry().getValue().getValueType());
+          LOGGER.info("PrePrevious record type: {}", RECORDS.get(RECORDS.size() - 1).getValueType());
+          LOGGER.info("100 previous record type: {}", RECORDS.get(RECORDS.size() - 100).getValueType());
+        } else {
+//          LOGGER.info("Position differences: {}", record.getPosition() - lastCreatePosition);
+        }
+      }
+    }
     LOCK.lock();
     try {
       RECORDS.put(RECORDS.size(), record.copyOf());
@@ -420,22 +448,32 @@ public final class RecordingExporter implements Exporter {
 
     @Override
     public boolean hasNext() {
-      LOCK.lock();
+      final StopWatch hasNextWatch = StopWatch.create();
       try {
-        long now = System.currentTimeMillis();
-        final long endTime = now + maximumWaitTime;
-        while (isEmpty() && endTime > now) {
-          final long waitTime = endTime - now;
-          try {
-            IS_EMPTY.await(waitTime, TimeUnit.MILLISECONDS);
-          } catch (final InterruptedException ignored) {
-            // ignored
+        hasNextWatch.start();
+        LOCK.lock();
+        try {
+          long now = System.currentTimeMillis();
+          final long endTime = now + maximumWaitTime;
+          while (isEmpty() && endTime > now) {
+            final long waitTime = endTime - now;
+            try {
+              IS_EMPTY.await(waitTime, TimeUnit.MILLISECONDS);
+            } catch (final InterruptedException ignored) {
+              // ignored
+            }
+            now = System.currentTimeMillis();
           }
-          now = System.currentTimeMillis();
+          return !isEmpty();
+        } finally {
+          LOCK.unlock();
         }
-        return !isEmpty();
       } finally {
-        LOCK.unlock();
+        hasNextWatch.stop();
+        final long hasNextTime = hasNextWatch.getTime(TimeUnit.MILLISECONDS);
+        if (hasNextTime > 300) {
+          LOGGER.info("hasNext took {} ms", hasNextTime);
+        }
       }
     }
 

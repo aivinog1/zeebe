@@ -85,7 +85,8 @@ public class ColumnFamilyIterationPerfTest {
             ZbColumnFamilies.TIMER_DUE_DATES,
             zeebeDb.createContext(),
             columnFamilyKey,
-            DbNil.INSTANCE);
+            DbNil.INSTANCE,
+            true);
   }
 
   @TearDown
@@ -135,6 +136,7 @@ public class ColumnFamilyIterationPerfTest {
           columnFamilyKey.wrapLong(time);
           longKeyColumnFamily.deleteExisting(columnFamilyKey);
         });
+//    longKeyColumnFamily.compact();
     deletedKeyStorage.clear();
   }
 

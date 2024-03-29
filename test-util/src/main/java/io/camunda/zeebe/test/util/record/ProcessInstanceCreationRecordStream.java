@@ -13,12 +13,18 @@ import io.camunda.zeebe.protocol.record.value.ProcessInstanceCreationRecordValue
 import io.camunda.zeebe.protocol.record.value.ProcessInstanceCreationRecordValue.ProcessInstanceCreationStartInstructionValue;
 import io.camunda.zeebe.test.util.collection.Maps;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.time.StopWatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ProcessInstanceCreationRecordStream
     extends ExporterRecordStream<
         ProcessInstanceCreationRecordValue, ProcessInstanceCreationRecordStream> {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ProcessInstanceCreationRecordStream.class);
 
   public ProcessInstanceCreationRecordStream(
       final Stream<Record<ProcessInstanceCreationRecordValue>> wrappedStream) {
@@ -75,5 +81,21 @@ public final class ProcessInstanceCreationRecordStream
         r ->
             r.getIntent() == ProcessInstanceCreationIntent.CREATED
                 && r.getValue().getProcessInstanceKey() == processInstanceKey);
+  }
+
+  @Override
+  public Record<ProcessInstanceCreationRecordValue> getFirst() {
+    final StopWatch getFirstStopWatch = StopWatch.create();
+    try{
+      getFirstStopWatch.start();
+      return super.getFirst();
+    } finally{
+      getFirstStopWatch.stop();
+      final long getFirstMs = getFirstStopWatch.getTime(TimeUnit.MILLISECONDS);
+      if (getFirstMs > 100) {
+        LOGGER.info("Get First PIC: {} ms", getFirstMs);
+      }
+    }
+
   }
 }

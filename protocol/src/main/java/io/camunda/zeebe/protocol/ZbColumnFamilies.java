@@ -15,7 +15,6 @@
  */
 package io.camunda.zeebe.protocol;
 
-
 // New Column families should be added at the bottom as ColumnFamilyContext uses
 // this class as ordinal()
 public enum ZbColumnFamilies {

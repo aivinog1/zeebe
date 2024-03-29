@@ -35,7 +35,8 @@ import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
-import org.rocksdb.Env;
+import org.rocksdb.CompactRangeOptions;
+import org.rocksdb.CompactRangeOptions.BottommostLevelCompaction;
 import org.rocksdb.OptimisticTransactionDB;
 import org.rocksdb.Options;
 import org.rocksdb.ReadOptions;
@@ -62,13 +63,15 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
   private final ConsistencyChecksSettings consistencyChecksSettings;
   private final Map<String, ColumnFamilyHandle> columnFamilyHandleMap;
   private final Map<String, Long> columnFamilyNativeHandleMap;
+  private final CompactRangeOptions compactRangeOptions;
 
   protected ZeebeTransactionDb(
       final List<ColumnFamilyHandle> columnFamilyHandleList,
       final OptimisticTransactionDB optimisticTransactionDB,
       final List<AutoCloseable> closables,
       final RocksDbConfiguration rocksDbConfiguration,
-      final ConsistencyChecksSettings consistencyChecksSettings) {
+      final ConsistencyChecksSettings consistencyChecksSettings,
+      CompactRangeOptions compactRangeOptions) {
     this.columnFamilyHandleMap =
         columnFamilyHandleList.stream()
             .collect(
@@ -81,6 +84,7 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
                       }
                     },
                     Function.identity()));
+    this.compactRangeOptions = compactRangeOptions;
     this.columnFamilyNativeHandleMap =
         columnFamilyHandleMap.entrySet().stream()
             .map(entry -> new SimpleImmutableEntry<>(entry.getKey(), getNativeHandle(entry.getValue())))
@@ -161,6 +165,9 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
     closables.add(outerOptions);
     closables.add(tablePropertiesCollectorFactory);
     closables.add(optimisticTransactionDB);
+    final CompactRangeOptions compactRangeOptions = new CompactRangeOptions().setBottommostLevelCompaction(
+        BottommostLevelCompaction.kForceOptimized);
+    closables.add(compactRangeOptions);
 
     //    if (cfHandles.size() != 1) {
     //      throw new IllegalStateException(
@@ -177,7 +184,8 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
         optimisticTransactionDB,
         closables,
         rocksDbConfiguration,
-        consistencyChecksSettings);
+        consistencyChecksSettings,
+        compactRangeOptions);
   }
 
   static long getNativeHandle(final RocksObject object) {
@@ -213,7 +221,7 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
           final KeyType keyInstance,
           final ValueType valueInstance) {
     return new TransactionalColumnFamily<>(
-        this, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance);
+        this, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, compactRangeOptions);
   }
 
   @Override
@@ -222,7 +230,7 @@ public class ZeebeTransactionDb<ColumnFamilyNames extends Enum<ColumnFamilyNames
       final KeyType keyInstance, final ValueType valueInstance,
       final boolean isSingleDeletePreferred) {
     return new TransactionalColumnFamily<>(
-        this, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, isSingleDeletePreferred);
+        this, consistencyChecksSettings, columnFamily, context, keyInstance, valueInstance, isSingleDeletePreferred, compactRangeOptions);
   }
 
   @Override
