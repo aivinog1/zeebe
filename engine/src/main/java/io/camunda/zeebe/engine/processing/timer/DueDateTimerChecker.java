@@ -17,24 +17,37 @@ import io.camunda.zeebe.scheduler.clock.ActorClock;
 import io.camunda.zeebe.stream.api.ReadonlyStreamProcessorContext;
 import io.camunda.zeebe.stream.api.StreamProcessorLifecycleAware;
 import io.camunda.zeebe.stream.api.scheduling.TaskResultBuilder;
+import io.camunda.zeebe.util.ExponentialBackoff;
 import io.camunda.zeebe.util.FeatureFlags;
 import java.time.Duration;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class DueDateTimerChecker implements StreamProcessorLifecycleAware {
 
   private static final long TIMER_RESOLUTION = Duration.ofMillis(100).toMillis();
+  private static final ExponentialBackoff EXPONENTIAL_BACKOFF = new ExponentialBackoff(Duration.ofSeconds(60).toMillis(), Duration.ofSeconds(10).toMillis());
   private static final double GIVE_YIELD_FACTOR = 0.5;
   private final DueDateChecker dueDateChecker;
 
   public DueDateTimerChecker(
       final TimerInstanceState timerInstanceState, final FeatureFlags featureFlags) {
+    final ActorClock actorClock = ActorClock.current();
     dueDateChecker =
         new DueDateChecker(
             TIMER_RESOLUTION,
             featureFlags.enableTimerDueDateCheckerAsync(),
             new TriggerTimersSideEffect(
-                timerInstanceState, ActorClock.current(), featureFlags.yieldingDueDateChecker()));
+                timerInstanceState,
+                actorClock,
+                featureFlags.yieldingDueDateChecker(),
+                new Supplier<>() {
+                  @Override
+                  public Void get() {
+                    dueDateChecker.schedule(actorClock.getTimeMillis() + EXPONENTIAL_BACKOFF.applyAsLong(TIMER_RESOLUTION));
+                    return null;
+                  }
+                }));
   }
 
   public void scheduleTimer(final long dueDate) {
@@ -73,14 +86,18 @@ public class DueDateTimerChecker implements StreamProcessorLifecycleAware {
 
     private final TimerInstanceState timerInstanceState;
     private final boolean yieldControl;
+    private final Supplier<Void> reTriggerFunc;
 
     public TriggerTimersSideEffect(
         final TimerInstanceState timerInstanceState,
         final ActorClock actorClock,
-        final boolean yieldControl) {
+        final boolean yieldControl,
+        final Supplier<Void> reTriggerFunc
+    ) {
       this.timerInstanceState = timerInstanceState;
       this.actorClock = actorClock;
       this.yieldControl = yieldControl;
+      this.reTriggerFunc = reTriggerFunc;
     }
 
     @Override
@@ -98,7 +115,8 @@ public class DueDateTimerChecker implements StreamProcessorLifecycleAware {
         timerVisitor = new WriteTriggerTimerCommandVisitor(taskResultBuilder);
       }
 
-      return timerInstanceState.processTimersWithDueDateBefore(now, timerVisitor);
+//      return timerInstanceState.processTimersWithDueDateBefore(now, timerVisitor);
+      return timerInstanceState.processTimersWithDueDateBefore(now, timerVisitor, 125, reTriggerFunc);
     }
   }
 

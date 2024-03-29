@@ -9,6 +9,7 @@ package io.camunda.zeebe.engine.state.immutable;
 
 import io.camunda.zeebe.engine.state.instance.TimerInstance;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public interface TimerInstanceState {
 
@@ -18,6 +19,9 @@ public interface TimerInstanceState {
    * @return due date of the next scheduled timer (or {@code -1} if no succeeding timer exists)
    */
   long processTimersWithDueDateBefore(long timestamp, TimerVisitor consumer);
+
+  long processTimersWithDueDateBefore(long timestamp, TimerVisitor consumer, final long limit, final
+      Supplier<Void> rescheduleFunc);
 
   /**
    * NOTE: the timer instance given to the consumer is shared and will be mutated on the next
