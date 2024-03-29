@@ -17,9 +17,14 @@ import io.camunda.zeebe.db.impl.DbLong;
 import io.camunda.zeebe.db.impl.DbNil;
 import io.camunda.zeebe.engine.state.mutable.MutableTimerInstanceState;
 import io.camunda.zeebe.protocol.ZbColumnFamilies;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class DbTimerInstanceState implements MutableTimerInstanceState {
+
+  public static final Logger LOGGER = LoggerFactory.getLogger(DbTimerInstanceState.class);
 
   private final ColumnFamily<DbCompositeKey<DbForeignKey<DbLong>, DbLong>, TimerInstance>
       timerInstanceColumnFamily;
@@ -84,9 +89,13 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
   }
 
   @Override
-  public long processTimersWithDueDateBefore(final long timestamp, final TimerVisitor consumer) {
+  public long processTimersWithDueDateBefore(
+      final long timestamp,
+      final TimerVisitor consumer,
+      final long limit,
+      final Runnable rescheduleFunc) {
     nextDueDate = -1L;
-
+    final AtomicLong count = new AtomicLong();
     dueDateColumnFamily.whileTrue(
         (key, nil) -> {
           final var dueDate = key.first().getValue();
@@ -94,9 +103,11 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
 
           boolean consumed = false;
           if (dueDate <= timestamp) {
-            final var timerInstance = timerInstanceColumnFamily.get(elementAndTimerKey);
+            final TimerInstance timerInstance;
+            timerInstance = timerInstanceColumnFamily.get(elementAndTimerKey);
             if (timerInstance == null) {
-              // Time for due date no longer exists. This can occur due to the following data race:
+              // Time for due date no longer exists. This can occur due to the following data
+              // race:
               // 1. Scheduled task reads a due date for a timer
               // 2. Processing removes timer and due date
               // 3. Scheduled task fails to find timer
@@ -109,6 +120,11 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
           if (!consumed) {
             nextDueDate = dueDate;
           }
+          if (count.get() > limit) {
+            rescheduleFunc.run();
+            return false;
+          }
+          count.getAndIncrement();
           return consumed;
         });
 

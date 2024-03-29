@@ -61,7 +61,9 @@ class DueDateTimerCheckerTest {
           new TestTimerInstanceStateThatSimulatesAnEndlessListOfDueTimers(
               mockTimer, testActorClock);
 
-      final var sut = new TriggerTimersSideEffect(testTimerInstanceState, testActorClock, true);
+      final var sut =
+          new TriggerTimersSideEffect(
+              testTimerInstanceState, testActorClock, true, () -> {}, Long.MAX_VALUE);
 
       // when
       sut.apply(mockTaskResultBuilder);
@@ -103,7 +105,9 @@ class DueDateTimerCheckerTest {
           new TestTimerInstanceStateThatSimulatesAnEndlessListOfDueTimers(
               mockTimer, testActorClock);
 
-      final var sut = new TriggerTimersSideEffect(testTimerInstanceState, testActorClock, true);
+      final var sut =
+          new TriggerTimersSideEffect(
+              testTimerInstanceState, testActorClock, true, () -> {}, Long.MAX_VALUE);
 
       // when
       sut.apply(mockTaskResultBuilder);
@@ -221,7 +225,11 @@ class DueDateTimerCheckerTest {
     }
 
     @Override
-    public long processTimersWithDueDateBefore(final long timestamp, final TimerVisitor consumer) {
+    public long processTimersWithDueDateBefore(
+        final long timestamp,
+        final TimerVisitor consumer,
+        final long limit,
+        final Runnable rescheduleFunc) {
       var yield = false;
 
       while (!yield) {
