@@ -18,6 +18,8 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.platform.commons.util.ReflectionUtils;
+import org.openjdk.jmh.profile.AsyncProfiler;
+import org.openjdk.jmh.profile.GCProfiler;
 import org.openjdk.jmh.results.format.ResultFormatType;
 
 /**
@@ -68,6 +70,15 @@ final class JMHTestExtension implements ParameterResolver {
             final var resultPath = RESULTS_DIR.resolve(resultFile);
             opt.resultFormat(ResultFormatType.TEXT);
             opt.result(resultPath.toString());
+          });
+    }
+    if (annotation.isAdditionalProfilersEnabled()) {
+      testCase.withOptions(
+          chainedOptionsBuilder -> {
+            chainedOptionsBuilder.addProfiler(
+                AsyncProfiler.class,
+                "output=jfr;threads=true;event=wall;interval=10000000;lock=1ms");
+            chainedOptionsBuilder.addProfiler(GCProfiler.class);
           });
     }
 

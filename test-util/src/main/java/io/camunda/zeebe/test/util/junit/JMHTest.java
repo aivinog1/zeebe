@@ -76,5 +76,7 @@ public @interface JMHTest {
    */
   Class<?> jmhClass() default None.class;
 
+  boolean isAdditionalProfilersEnabled() default false;
+
   final class None {}
 }
